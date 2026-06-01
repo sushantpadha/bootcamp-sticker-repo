@@ -1,0 +1,164 @@
+# ARCHITECTURE
+
+Authoritative for: directory structure, layer boundaries, import rules, the
+composition root, and the LSP macro-decisions that shaped them. Type-level
+contracts live in DOMAIN.md, IDB.md, MODES.md, STATE.md — referenced here by name.
+
+## Directory tree
+
+src/
+  domain/
+    entities/
+      sticker.ts            # Sticker type, invariants, factory
+      pack.ts               # Pack type, invariants, factory
+    values/
+      mime.ts               # SupportedMime union + extension map (png/gif/webp; apng->png)
+      modeName.ts
+    selection/
+      sidebarSelection.ts   # interface
+      allSelection.ts
+      packSelection.ts
+      ungroupedSelection.ts
+    sort/
+      stickerSort.ts        # interface
+      recentSort.ts  addedSort.ts  nameSort.ts
+    search/
+      searchPredicate.ts    # buildSearchPredicate(query) => (Sticker)=>boolean
+    naming/
+      collision.ts          # resolveNameCollision(name, siblings) => uniqueName
+
+  app/
+    engine/
+      appState.ts           # immutable snapshot shape
+      engine.ts             # store: getSnapshot/subscribe/dispatch; owns the Mode FSM
+      intents.ts            # intent union + handlers
+      flash.ts              # 2s flash scheduling via Clock
+    modes/
+      mode.ts               # Mode interface
+      normalMode.ts ... helpMode.ts
+      modeRegistry.ts
+    commands/
+      command.ts            # Command interface
+      registry.ts           # trie resolver + E492
+      packCommands.ts tagCommands.ts sortCommands.ts ioCommands.ts themeCommands.ts helpCommand.ts
+    upload/
+      stickerCandidate.ts   # interface
+      fileCandidate.ts clipboardCandidate.ts uploadQueue.ts
+    services/
+      yankService.ts        # ClipboardPort write + download fallback; updates lastUsedAt
+      packService.ts        # create/rename/delete/move w/ collision + single-tx writes
+      exportService.ts importService.ts
+    ports/
+      database.ts stickerRepository.ts packRepository.ts
+      clipboardPort.ts filePickerPort.ts zipCodecPort.ts
+      keyValueStore.ts clock.ts idGenerator.ts
+
+  infra/
+    idb/ idbDatabase.ts idbStickerRepository.ts idbPackRepository.ts schema.ts
+    clipboard/ navigatorClipboard.ts
+    files/ domFilePicker.ts
+    zip/ jsZipCodec.ts
+    kv/ localStorageKeyValueStore.ts
+    system/ systemClock.ts cryptoIdGenerator.ts
+
+  ui/
+    AppRoot.tsx             # mounts engine; useSyncExternalStore
+    useEngine.ts            # hook -> { snapshot, dispatch }
+    KeyboardCapture.tsx     # document keydown; preventDefault in NORMAL
+    Sidebar.tsx PackRow.tsx
+    Grid.tsx StickerCell.tsx
+    Statusline.tsx          # renders StatuslineModel from active mode
+    overlays/ UploadModal.tsx HelpModal.tsx
+    theme/ themeVars.css    # .theme-dark / .theme-light CSS custom properties
+
+  bootstrap/
+    composition.ts          # the ONLY place infra is instantiated + injected
+  main.tsx
+
+  test/
+    fakes/ fakeDatabase.ts fakeRepositories.ts fakeClipboard.ts ...
+
+## Layer diagram
+
+Dependencies point inward. Inner layers never import outer layers.
+
+            ┌─────────────────────────────────────────────┐
+   UI       │  React: AppRoot, KeyboardCapture, Sidebar,   │
+ (outer)    │  Grid, Statusline, Upload/Help overlays      │
+            └───────────────┬─────────────────────────────┘
+                            │ reads snapshot / dispatches keys+intents
+            ┌───────────────▼─────────────────────────────┐
+ Application│  Engine (store + Mode FSM), Commands,         │
+            │  Intents, Services (yank/export/import/pack)  │
+            └───────────────┬─────────────────────────────┘
+                            │ depends on PORT interfaces only
+            ┌───────────────▼─────────────────────────────┐
+   Ports    │  Database/UnitOfWork, StickerRepository,      │
+            │  PackRepository, Clipboard, FilePicker,        │
+            │  ZipCodec, KeyValueStore, Clock, IdGenerator   │
+            └───────────────┬─────────────────────────────┘
+                  implemented by ▲ (Infra), consumed by ▲ (App)
+            ┌───────────────▼─────────────────────────────┐
+   Domain   │  Entities (Sticker, Pack), Selections, Sort,  │
+ (inner)    │  Search, Naming — pure, no browser, no React  │
+            └─────────────────────────────────────────────┘
+
+   Infra (sibling of Ports): IdbDatabase, IdbRepositories,
+   NavigatorClipboard, JsZipCodec, LocalStorageKeyValueStore,
+   SystemClock, CryptoIdGenerator — implement the Port interfaces.
+
+## LSP macro-decisions (binding; these shaped the whole tree)
+
+These four decisions are the backbone of the design. Treat them as load-bearing
+wherever you touch the relevant layer.
+
+1. **Ports-and-adapters exists *because* of LSP.** All Application code is written
+   against the port interfaces in IDB.md, never against infra. The IDB adapter and
+   the in-memory test fake are *subtypes* of those ports and must be drop-in
+   interchangeable — the engine code is byte-identical under either. A fake that
+   weakened any postcondition (e.g. swallowed a missing-key error) would break the
+   substitution and is forbidden.
+
+2. **The Mode FSM is a single substitution site.** The keydown path is
+   `currentMode.handleKey(evt, engine)`. Correctness must never depend on *which*
+   mode is active. This forces the one total `Mode` contract in MODES.md and makes
+   it the FSM's spine, not a bolt-on.
+
+3. **The selection axis is split from the entity axis** to avoid the LSP violation
+   the spec invites (the `(ungrouped)` virtual pack). The substitutable view type
+   `SidebarSelection` (DOMAIN.md) carries only label + count + predicate; mutation
+   lives only on the real `Pack` entity. Never reunite them.
+
+4. **Keep every supertype narrow.** Across the codebase: find the behavior that is
+   *genuinely* common and make only that the supertype; never widen a base type with
+   an operation some subtype cannot honor. Violations show up as `if (x.isSpecial)`
+   guards — treat any such guard on a substitutable type as a design defect.
+
+## Module dependency rules
+
+| Module group | MAY import | MUST NOT import |
+|---|---|---|
+| `domain/**` | other `domain/**` only | `app`, `infra`, `ui`, any browser global |
+| `app/ports/**` | `domain/**` (entity types) | `infra`, `app/engine`, `app/modes`, `ui` |
+| `app/{engine,modes,commands,services,upload}/**` | `domain/**`, `app/ports/**` | `infra/**`, `ui/**`, browser globals |
+| `infra/**` | `domain/**`, `app/ports/**` | `app/{engine,modes,commands,services}`, `ui` |
+| `ui/**` | `app` engine surface + `domain/**` types for rendering | `infra/**` directly |
+| `bootstrap/composition.ts` | everything (it is the wiring) | — |
+| `test/fakes/**` | `domain/**`, `app/ports/**` | `infra/**` |
+
+Browser globals (`indexedDB`, `navigator`, `localStorage`, `crypto`) may be
+referenced **only** inside the matching `infra/**` adapter, never elsewhere.
+
+## Composition root contract
+
+`bootstrap/composition.ts` is the *sole* instantiation site for infra adapters:
+`IdbDatabase`, `IdbStickerRepository`, `IdbPackRepository`, `NavigatorClipboard`,
+`DomFilePicker`, `JsZipCodec`, `LocalStorageKeyValueStore`, `SystemClock`,
+`CryptoIdGenerator`. It constructs them, calls `Database.init()`, and injects every
+adapter into the engine constructor.
+
+No other module may `new` an adapter or read a browser global. This is the
+enforcement mechanism for LSP macro-decision #1: because the engine depends only on
+port interfaces, substituting the real infra for `test/fakes/**` is a one-line change
+at the root. Any module that reaches for a global bypasses the seam and silently
+voids the substitution guarantee — so it is prohibited.
