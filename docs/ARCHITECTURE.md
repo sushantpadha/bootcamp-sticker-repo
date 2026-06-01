@@ -6,6 +6,7 @@ contracts live in DOMAIN.md, IDB.md, MODES.md, STATE.md — referenced here by n
 
 ## Directory tree
 
+```
 src/
   domain/
     entities/
@@ -77,11 +78,13 @@ src/
 
   test/
     fakes/ fakeDatabase.ts fakeRepositories.ts fakeClipboard.ts ...
+```
 
 ## Layer diagram
 
 Dependencies point inward. Inner layers never import outer layers.
 
+```
             ┌─────────────────────────────────────────────┐
    UI       │  React: AppRoot, KeyboardCapture, Sidebar,   │
  (outer)    │  Grid, Statusline, Upload/Help overlays      │
@@ -106,6 +109,7 @@ Dependencies point inward. Inner layers never import outer layers.
    Infra (sibling of Ports): IdbDatabase, IdbRepositories,
    NavigatorClipboard, JsZipCodec, LocalStorageKeyValueStore,
    SystemClock, CryptoIdGenerator — implement the Port interfaces.
+```
 
 ## LSP macro-decisions (binding; these shaped the whole tree)
 

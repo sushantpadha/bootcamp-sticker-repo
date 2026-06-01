@@ -6,6 +6,7 @@ and the fake-implementation contract. Entity field shapes are in DOMAIN.md.
 
 ## Port interfaces (verbatim, with LSP annotations)
 
+```
 type StoreName = 'stickers' | 'packs';
 
 interface Database {
@@ -31,6 +32,7 @@ interface ZipCodecPort   { /* pack(manifest, files) -> Blob; unpack(File) -> {ma
 interface KeyValueStore  { get(k: string): string | null; set(k: string, v: string): void; }
 interface Clock          { now(): number; }
 interface IdGenerator    { uuid(): string; }
+```
 
 LSP obligations across all ports:
 - **Uniform error surface (decision J).** Any failure throws. The engine is the
@@ -57,18 +59,22 @@ calls. You may never `await` any non-IDB async work inside an open transaction.
 
 Exact violation pattern to avoid:
 
+```
   // FORBIDDEN — awaiting foreign async inside an open tx lets the tx auto-close
   await db.tx(['stickers'], 'readwrite', async (scope) => {
     const buf = await file.arrayBuffer();   // ❌ foreign await; tx is now dead
     repo.put(scope, { ...rec, data: buf });
   });
+```
 
 Correct shape — resolve all foreign async first, then open one tx for all writes:
 
+```
   const buffers = await Promise.all(candidates.map(c => c.resolveBytes())); // outside tx
   await db.tx(['stickers', 'packs'], 'readwrite', (scope) => {
     /* only repo.put/delete here */
   });
+```
 
 This rule is also what keeps `IdbDatabase` and `FakeDatabase` substitutable: both
 honor "one synchronous-ish write phase per tx," so Application code is identical

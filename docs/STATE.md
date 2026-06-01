@@ -11,6 +11,7 @@ can detect change by identity. Referenced types (`Sticker`, `Pack`,
 `SidebarSelection`, `StickerSort`, `StickerCandidate`) are defined in DOMAIN.md;
 `ModeName` and `StatuslineModel` in MODES.md.
 
+```
 interface AppState {
   // ── loaded from IDB into memory (the in-memory source of truth) ──
   stickers: Sticker[];          // full snapshot; the grid is derived from this
@@ -42,6 +43,7 @@ interface QueuedSticker {       // one editable row in the upload modal
 }
 
 interface Flash { text: string; isError: boolean; }
+```
 
 NormalMode's `gg` / `[n]p` / digit buffers are **not** in this snapshot; they are
 mode-internal (see MODES.md, decision H).
@@ -77,12 +79,14 @@ swapping `sort` or `selection` never scrambles focus — this is what makes the
 The engine is a framework-agnostic store. React reads it through
 `useSyncExternalStore`; the engine has zero React imports. The React-facing surface:
 
+```
 interface EngineStore {
   getSnapshot(): AppState;          // returns the SAME reference until state changes;
                                     // a new object only on actual mutation (no tearing)
   subscribe(listener: () => void): () => void;  // returns unsubscribe
   dispatch(intent: Intent): void;   // the only mutation entry point for UI + modes
 }
+```
 
 `ui/useEngine.ts` wraps `useSyncExternalStore(subscribe, getSnapshot)` and returns
 `{ snapshot, dispatch }`. Components never hold derived values in their own state;

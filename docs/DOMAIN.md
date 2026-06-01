@@ -6,6 +6,7 @@ All types here are framework- and browser-free.
 
 ## Entities
 
+```
 interface Sticker {
   id: string;             // crypto.randomUUID()
   name: string;
@@ -22,13 +23,16 @@ interface Pack {
   name: string;
   createdAt: number;
 }
+```
 
 Invariant: a `Pack` always has a persisted UUID `id`. This invariant is the reason
 All/Ungrouped are NOT packs (see SidebarSelection below).
 
 ## Decision G — SupportedMime
 
+```
 type SupportedMime = 'image/png' | 'image/gif' | 'image/webp';
+```
 
 APNG is stored as `image/png` and rendered via `<img>` like GIF — no separate type.
 Extension map for export filenames / downloads: png→`.png`, gif→`.gif`, webp→`.webp`.
@@ -44,6 +48,7 @@ The genuinely common behavior of the three sidebar rows is only: produce a label
 count, and a predicate selecting which stickers show. That — and nothing more — is
 the supertype:
 
+```
 interface SidebarSelection {
   readonly key: string;                  // stable key for focus/restore
                                           // ("all" | "pack:<id>" | "ungrouped")
@@ -52,6 +57,7 @@ interface SidebarSelection {
   // [LSP] deliberately NO id, rename(), delete(), persist():
   //       not every selection can honor them, so they are NOT in the supertype.
 }
+```
 
 Implementations (all substitutable for filtering + display):
 - AllSelection      → matches = () => true
@@ -65,6 +71,7 @@ never reunited.
 
 ## StickerSort — strategy substitutability
 
+```
 interface StickerSort {
   readonly id: 'recent' | 'added' | 'name';
   compare(a: Sticker, b: Sticker): number;  // [LSP] MUST be a strict weak ordering:
@@ -72,6 +79,7 @@ interface StickerSort {
                                               //       tie-breaker (by id) so focus-by-id
                                               //       stays stable when sort is swapped
 }
+```
 
 Implementations: RecentSort (lastUsedAt desc), AddedSort (createdAt desc),
 NameSort (name asc). The tie-breaker is an LSP obligation, not an optimization: an
@@ -80,6 +88,7 @@ even though it would still type-check as a `StickerSort`.
 
 ## Command — command-pattern substitutability
 
+```
 interface Command {
   readonly path: readonly string[];                 // e.g. ['pack','new']
   readonly arity: 'none' | 'one' | 'rest';          // for arg parsing + completion
@@ -90,6 +99,7 @@ interface Command {
 type CommandOutcome =
   | { ok: true; flash?: string }
   | { ok: false; flash: string };
+```
 
 Atomicity invariant: a command must not leave half-applied state on its failure
 path. The runner resolves the longest matching `path`; no match flashes
@@ -99,6 +109,7 @@ uniform postcondition is the substitution guarantee. (`Engine` handle: see MODES
 
 ## StickerCandidate — upload-source substitutability
 
+```
 interface StickerCandidate {
   defaultName: string;
   mimeType: SupportedMime;
@@ -106,6 +117,7 @@ interface StickerCandidate {
   resolveBytes(): Promise<ArrayBuffer>;   // [LSP] every source resolves to an
                                            //       ArrayBuffer the same way
 }
+```
 
 FileCandidate(file) (drop/picker) and ClipboardImageCandidate(blob) (Ctrl+V) are
 substitutable; the save pipeline calls `resolveBytes()` for all candidates first,
@@ -114,7 +126,7 @@ source.
 
 ## Decision F — naming collision algorithm contract
 
-resolveNameCollision(name, targetPackIds, existing): string
+`resolveNameCollision(name, targetPackIds, existing): string`
 
 - Inputs: the proposed `name`, the `targetPackIds` the sticker will belong to
   (`[]` = ungrouped), and `existing` = all other stickers.
@@ -129,7 +141,7 @@ resolveNameCollision(name, targetPackIds, existing): string
 
 ## SearchPredicate contract
 
-buildSearchPredicate(query): (s: Sticker) => boolean
+`buildSearchPredicate(query): (s: Sticker) => boolean`
 
 - Searches `name` and each entry of `tags`.
 - Case-insensitive substring: lowercase both query and field, test inclusion.

@@ -6,6 +6,7 @@ the statusline model. State shape is in STATE.md; intents are catalogued there.
 
 ## ModeName and KeyEvent
 
+```
 type ModeName =
   | 'NORMAL' | 'SEARCH' | 'COMMAND' | 'CONFIRM' | 'RENAME'
   | 'TAGS' | 'PACKASSIGN' | 'UPLOAD' | 'HELP';
@@ -15,6 +16,7 @@ interface KeyEvent {                 // normalized by ui/KeyboardCapture from DO
   ctrl: boolean; shift: boolean; alt: boolean; meta: boolean;
   preventDefault(): void;
 }
+```
 
 The mode-facing `Engine` handle passed to modes exposes: read access to the current
 `AppState` (STATE.md), `dispatch(intent)` (intent catalog in STATE.md),
@@ -22,7 +24,7 @@ The mode-facing `Engine` handle passed to modes exposes: read access to the curr
 `setStatusInput(s)`.
 
 ## Mode interface (verbatim, with LSP annotations)
-
+```
 interface Mode {
   readonly name: ModeName;                       // stable identity
 
@@ -37,6 +39,7 @@ interface Mode {
   onExit(engine: Engine): void;                  // [LSP] releases ALL transient buffers,
                                                   //       restores focus invariants
 }
+```
 
 Substitution obligations every concrete mode MUST uphold:
 - **Total input.** No mode may demand a narrower key domain; non-meaningful keys are
@@ -95,12 +98,14 @@ not part of AppState (STATE.md).
 
 The spec's statusline format table was truncated; this is the canonical model.
 
+```
 interface StatuslineModel {
   mode: ModeName;          // left-most label, uppercased
   input?: string;          // SEARCH/COMMAND/RENAME/TAGS/PACKASSIGN
   hint?: string;           // e.g. confirm prompt
   right?: string;          // contextual right-aligned info
 }
+```
 
 | Mode | left | input | right |
 |---|---|---|---|
