@@ -1,73 +1,85 @@
-# React + TypeScript + Vite
+# bootcamp-sticker-repo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A keyboard-driven sticker manager that lives entirely in your browser. No server,
+no sync, no account. Your stickers stay in IndexedDB until you export them.
 
-Currently, two official plugins are available:
+## What it is
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Vim-style keybindings — navigate, yank, tag, and organize without touching the mouse
+- Two themes: terminal green on black, or GitHub light (`ctrl+t` to toggle)
+- Pack-based organization with multi-pack membership
+- ZIP export/import for backup and migration
+- Supports PNG, GIF, WebP, APNG
 
-## React Compiler
+## Running it
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+That's it. No backend. Open `http://localhost:5173` and press `a` to add your first sticker.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Key bindings (quick reference)
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| Key | Action |
+|-----|--------|
+| `h j k l` | left / down / up / right |
+| `gg` / `G` | first / last sticker |
+| `0` / `$` | first / last in row |
+| `p` / `P` | next / previous pack |
+| `Enter` / `yy` | copy sticker to clipboard |
+| `a` | add stickers |
+| `r` | rename |
+| `t` | edit tags |
+| `m` | assign packs |
+| `f` | toggle favourite |
+| `d` | delete |
+| `/` | search |
+| `n` / `N` | next / previous search match |
+| `:` | command palette |
+| `?` | help |
+| `ctrl+t` | toggle theme |
+
+Full keybinding reference: press `?` in the app.
+
+## Commands
+
 ```
+:pack new <name>        create a pack
+:pack rename <name>     rename current pack
+:pack delete            delete current pack
+:pack move <name>       move focused sticker to pack
+:tag add <tag>          add tag to focused sticker
+:tag rename <old> <new> rename tag globally
+:sort recent|added|name change sort order
+:export                 download full DB as ZIP
+:import                 restore from ZIP
+:theme dark|light|toggle
+:help
+```
+
+## Architecture
+
+Ports-and-adapters with a vanilla engine (no state library) that React reads via
+`useSyncExternalStore`. The domain layer is pure TypeScript with no browser
+dependencies. LSP-abiding substitution seams are documented in `docs/`.
+
+```
+ui/          → React, rendering only, no business logic
+app/         → engine, modes, commands, services
+app/ports/   → interfaces (never infra)
+infra/       → IDB, clipboard, JSZip adapters
+domain/      → pure entities, sort, search, naming
+bootstrap/   → sole instantiation site for infra
+```
+
+See `docs/ARCHITECTURE.md` for the full model.
+
+## Tech stack
+
+- React 18 + Vite
+- Tailwind (layout/spacing only — all colors via CSS custom properties)
+- JSZip
+- IndexedDB via a hand-rolled ports-and-adapters layer
+- No other runtime dependencies
