@@ -41,6 +41,10 @@ export interface EngineStore {
   // Returns the active mode's StatuslineModel (MODES.md §Decision C).
   // Called by ui/Statusline during render; consistent with the current snapshot.
   getStatuslineModel(): StatuslineModel;
+
+  // Returns the active mode's OverlayModel, or null for non-overlay modes.
+  // Called by AppRoot to conditionally render the correct overlay component.
+  getOverlayModel(): import('../modes/mode').OverlayModel | null;
 }
 
 // ── Ports required by the engine ──────────────────────────────────────────────
@@ -195,6 +199,12 @@ export class EngineImpl implements EngineStore {
     const mode = this.registry.get(this.state.modeName);
     if (mode === null) return { mode: this.state.modeName };
     return mode.statusline(this.asEngineHandle());
+  }
+
+  getOverlayModel(): import('../modes/mode').OverlayModel | null {
+    const mode = this.registry.get(this.state.modeName);
+    if (mode === null) return null;
+    return mode.overlay(this.asEngineHandle());
   }
 
   // ── Engine handle (mode-facing) ───────────────────────────────────────────────

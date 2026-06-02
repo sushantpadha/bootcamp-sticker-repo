@@ -6,6 +6,7 @@ import { KeyboardCapture } from './KeyboardCapture';
 import { Grid } from './Grid';
 import { Sidebar } from './Sidebar';
 import { Statusline } from './Statusline';
+import { HelpModal } from './overlays/HelpModal';
 import './theme/themeVars.css';
 
 // ── Object URL memoization ────────────────────────────────────────────────────
@@ -140,6 +141,9 @@ export function AppRoot({ engine }: Props) {
       </div>
 
       <KeyboardCapture engine={engine} snapshot={snapshot} />
+
+      {/* Overlay layer — rendered on top when an exclusive mode is active */}
+      {engine.getOverlayModel()?.type === 'HELP' && <HelpModal />}
     </div>
   );
 }
