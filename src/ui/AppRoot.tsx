@@ -1,61 +1,13 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 import type { EngineStore } from '../app/engine/engine';
-import type { Sticker } from '../domain/entities/sticker';
 import { useEngine } from './useEngine';
+import { useObjectURLs } from './useObjectURLs';
 import { KeyboardCapture } from './KeyboardCapture';
 import { Grid } from './Grid';
 import { Sidebar } from './Sidebar';
 import { Statusline } from './Statusline';
 import { HelpModal } from './overlays/HelpModal';
 import './theme/themeVars.css';
-
-// ── Object URL memoization ────────────────────────────────────────────────────
-//
-// Sticker.data is an ArrayBuffer. createObjectURL is expensive and must not be
-// called on every render. This hook caches URLs keyed by sticker id and only
-// creates/revokes when the ArrayBuffer reference itself changes.
-// All URLs are revoked on unmount.
-
-interface CachedURL {
-  url: string;
-  buffer: ArrayBuffer;
-}
-
-export function useObjectURLs(stickers: Sticker[]): ReadonlyMap<string, string> {
-  const cacheRef = useRef<Map<string, CachedURL>>(new Map());
-  const cache = cacheRef.current;
-
-  // Synchronous ref mutation: safe because refs are not React state and this
-  // doesn't trigger a re-render. Runs during render so the returned map is
-  // immediately current (not deferred by a useEffect cycle).
-  const nextIds = new Set(stickers.map(s => s.id));
-
-  for (const [id, { url }] of cache) {
-    if (!nextIds.has(id)) {
-      URL.revokeObjectURL(url);
-      cache.delete(id);
-    }
-  }
-
-  for (const sticker of stickers) {
-    const existing = cache.get(sticker.id);
-    if (!existing || existing.buffer !== sticker.data) {
-      if (existing) URL.revokeObjectURL(existing.url);
-      const url = URL.createObjectURL(
-        new Blob([sticker.data], { type: sticker.mimeType }),
-      );
-      cache.set(sticker.id, { url, buffer: sticker.data });
-    }
-  }
-
-  // Revoke everything on unmount.
-  useEffect(() => () => {
-    for (const { url } of cacheRef.current.values()) URL.revokeObjectURL(url);
-    cacheRef.current.clear();
-  }, []);
-
-  return cache;
-}
 
 // ── AppRoot ───────────────────────────────────────────────────────────────────
 //

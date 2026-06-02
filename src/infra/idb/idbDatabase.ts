@@ -7,14 +7,18 @@ import { DB_NAME, DB_VERSION, applySchema } from './schema';
 // synchronous reads) and an optional IDB transaction handle (for writes).
 export class IdbTxScope extends TxScope {
   protected readonly _brand = undefined as void;
+  readonly idbTx: IDBTransaction | null;
+  readonly mode: 'readonly' | 'readwrite';
   readonly view: { stickers: Map<string, Sticker>; packs: Map<string, Pack> };
 
   constructor(
-    readonly idbTx: IDBTransaction | null,
+    idbTx: IDBTransaction | null,
     preloaded: { stickers: Sticker[]; packs: Pack[] },
-    readonly mode: 'readonly' | 'readwrite',
+    mode: 'readonly' | 'readwrite',
   ) {
     super();
+    this.idbTx = idbTx;
+    this.mode = mode;
     this.view = {
       stickers: new Map(preloaded.stickers.map(s => [s.id, s])),
       packs:    new Map(preloaded.packs.map(p => [p.id, p])),

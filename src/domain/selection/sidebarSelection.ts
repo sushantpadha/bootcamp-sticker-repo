@@ -17,7 +17,12 @@ export class AllSelection implements SidebarSelection {
 
 export class PackSelection implements SidebarSelection {
   readonly key: string;
-  constructor(private readonly packId: string, private readonly packName: string) {
+  private readonly packId: string;
+  private readonly packName: string;
+
+  constructor(packId: string, packName: string) {
+    this.packId = packId;
+    this.packName = packName;
     this.key = `pack:${packId}`;
   }
   label(): string { return this.packName; }

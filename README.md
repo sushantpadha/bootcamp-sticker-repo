@@ -59,10 +59,12 @@ Full keybinding reference: press `?` in the app.
 :help
 ```
 
-## Development commands
+## Diagnostics
 
 ```bash
-npm run lint        # lint all source files
+npx tsc -p tsconfig.app.json --noEmit   # type errors incl. verbatimModuleSyntax
+npm run lint                             # ESLint
+npm run build                            # full bundle check
 ```
 
 ## Tests

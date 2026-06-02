@@ -5,13 +5,25 @@ import type { Clock } from '../ports/clock';
 import { resolveNameCollision } from '../../domain/naming/resolveNameCollision';
 
 export class YankService {
+  private readonly clipboard: ClipboardPort;
+  private readonly db: Database;
+  private readonly stickers: StickerRepository;
+  private readonly clock: Clock;
+  private readonly onDownloadFallback: (blob: Blob, name: string) => void;
+
   constructor(
-    private readonly clipboard: ClipboardPort,
-    private readonly db: Database,
-    private readonly stickers: StickerRepository,
-    private readonly clock: Clock,
-    private readonly onDownloadFallback: (blob: Blob, name: string) => void = () => {},
-  ) {}
+    clipboard: ClipboardPort,
+    db: Database,
+    stickers: StickerRepository,
+    clock: Clock,
+    onDownloadFallback: (blob: Blob, name: string) => void = () => {},
+  ) {
+    this.clipboard = clipboard;
+    this.db = db;
+    this.stickers = stickers;
+    this.clock = clock;
+    this.onDownloadFallback = onDownloadFallback;
+  }
 
   // Copies the sticker image to the clipboard (download fallback if clipboard
   // throws). Updates lastUsedAt in one tx and returns the updated Sticker.

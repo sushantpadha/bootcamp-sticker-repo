@@ -1,7 +1,11 @@
 import type { Clock } from '../../app/ports/clock';
 
 export class FakeClock implements Clock {
-  constructor(private time = 0) {}
+  private time: number;
+
+  constructor(time = 0) {
+    this.time = time;
+  }
 
   now(): number {
     return this.time;

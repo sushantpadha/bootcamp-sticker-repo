@@ -47,12 +47,22 @@ Browser globals (`indexedDB`, `navigator`, `localStorage`, `crypto`) may be refe
 
 4. **Keep every supertype narrow.** Across the codebase: find the behavior that is *genuinely* common and make only that the supertype; never widen a base type with an operation some subtype cannot honor. Violations show up as `if (x.isSpecial)` guards — treat any such guard on a substitutable type as a design defect.
 
+## Diagnostics
+
+| Command | What it checks |
+|---|---|
+| `npx tsc -p tsconfig.app.json --noEmit` | Type errors, including `verbatimModuleSyntax` violations |
+| `npm run lint` | ESLint — style, unused vars, React rules |
+| `npm run build` | Full Vite bundle — catches tree-shaking and import errors missed above |
+
 ## Milestone completion checklist
 
-Before marking any milestone done, run both of the following and confirm they pass:
+Before marking any milestone done, run all three diagnostics in order and confirm each passes before moving to the next. Stop and fix errors before proceeding.
 
-1. `npm run lint` — must exit clean (no errors)
-2. `npm test` — all tests must pass
+1. `npx tsc -p tsconfig.app.json --noEmit` — must exit with no errors
+2. `npm run lint` — must exit clean (no errors)
+3. `npm run build` — must produce a successful bundle
+4. `npm test` — all tests must pass
 
 ## Tests
 

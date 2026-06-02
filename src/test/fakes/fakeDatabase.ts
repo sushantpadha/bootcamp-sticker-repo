@@ -12,15 +12,19 @@ export interface FakeStore {
 // maps so reads see prior writes within the same tx and rollback is free.
 export class FakeTxScope extends TxScope {
   protected readonly _brand = undefined as void;
+  private readonly committed: FakeStore;
+  readonly mode: 'readonly' | 'readwrite';
 
   // Working copies; flushed to committed only on success.
   readonly view: FakeStore;
 
   constructor(
-    private readonly committed: FakeStore,
-    readonly mode: 'readonly' | 'readwrite',
+    committed: FakeStore,
+    mode: 'readonly' | 'readwrite',
   ) {
     super();
+    this.committed = committed;
+    this.mode = mode;
     // Shallow-copy each map so the tx sees a snapshot and writes stay staged.
     this.view = {
       stickers: new Map(committed.stickers),
@@ -59,13 +63,8 @@ export class FakeDatabase implements Database {
     body: (scope: TxScope) => T,
   ): Promise<T> {
     const scope = new FakeTxScope(this.store, mode);
-    let result: T;
-    try {
-      result = body(scope);
-    } catch (e) {
-      // Body threw — discard scope; committed state is untouched (rollback).
-      throw e;
-    }
+    // Body threw — scope discarded; committed state untouched (rollback).
+    const result = body(scope);
     // Body returned successfully — commit staged writes.
     scope.flush();
     return result;

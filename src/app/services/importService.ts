@@ -8,14 +8,28 @@ import type { QueuedSticker } from '../engine/appState';
 import { resolveNameCollision } from '../../domain/naming/resolveNameCollision';
 
 export class ImportService {
+  private readonly db: Database;
+  private readonly stickers: StickerRepository;
+  private readonly packs: PackRepository;
+  private readonly idGen: IdGenerator;
+  private readonly clock: Clock;
+  private readonly zip: ZipCodecPort;
+
   constructor(
-    private readonly db: Database,
-    private readonly stickers: StickerRepository,
-    private readonly packs: PackRepository,
-    private readonly idGen: IdGenerator,
-    private readonly clock: Clock,
-    private readonly zip: ZipCodecPort,
-  ) {}
+    db: Database,
+    stickers: StickerRepository,
+    packs: PackRepository,
+    idGen: IdGenerator,
+    clock: Clock,
+    zip: ZipCodecPort,
+  ) {
+    this.db = db;
+    this.stickers = stickers;
+    this.packs = packs;
+    this.idGen = idGen;
+    this.clock = clock;
+    this.zip = zip;
+  }
 
   // Saves the upload queue to IDB.
   //

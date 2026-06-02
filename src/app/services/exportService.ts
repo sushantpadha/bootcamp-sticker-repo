@@ -3,7 +3,11 @@ import type { ZipCodecPort, ZipManifest } from '../ports/zipCodecPort';
 import { mimeExtension } from '../../domain/values/mime';
 
 export class ExportService {
-  constructor(private readonly zip: ZipCodecPort) {}
+  private readonly zip: ZipCodecPort;
+
+  constructor(zip: ZipCodecPort) {
+    this.zip = zip;
+  }
 
   // Encodes the given stickers into a zip Blob.
   // Data is already ArrayBuffer in Sticker.data — no foreign async needed before

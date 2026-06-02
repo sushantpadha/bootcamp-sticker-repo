@@ -27,5 +27,5 @@ export interface Repository<E extends { id: string }> {
   delete(scope: TxScope, id: string): void;
 }
 
-export interface StickerRepository extends Repository<Sticker> {}
-export interface PackRepository    extends Repository<Pack> {}
+export type StickerRepository = Repository<Sticker>;
+export type PackRepository    = Repository<Pack>;

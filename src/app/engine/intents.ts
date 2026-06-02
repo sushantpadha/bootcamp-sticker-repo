@@ -9,7 +9,7 @@ import {
   PackSelection,
   UngroupedSelection,
 } from '../../domain/selection/sidebarSelection';
-import { AppState, computeVisibleGrid, QueuedSticker } from './appState';
+import { type AppState, computeVisibleGrid, type QueuedSticker } from './appState';
 
 // Direction for grid navigation; cols is the number of grid columns at dispatch time.
 export type FocusDir = 'up' | 'down' | 'left' | 'right' | 'first' | 'last';

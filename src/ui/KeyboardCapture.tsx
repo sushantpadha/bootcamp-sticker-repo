@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { EngineStore } from '../app/engine/engine';
 import type { AppState } from '../app/engine/appState';
 
@@ -22,7 +22,7 @@ export function KeyboardCapture({ engine, snapshot }: Props): null {
   // Keep a ref to the latest snapshot so the single event listener always
   // reads the current mode without being re-registered on every render.
   const snapshotRef = useRef(snapshot);
-  snapshotRef.current = snapshot;
+  useLayoutEffect(() => { snapshotRef.current = snapshot; });
 
   useEffect(() => {
     function onKeyDown(domEvt: KeyboardEvent): void {

@@ -5,13 +5,25 @@ import type { IdGenerator } from '../ports/idGenerator';
 import type { Clock } from '../ports/clock';
 
 export class PackService {
+  private readonly db: Database;
+  private readonly packs: PackRepository;
+  private readonly stickers: StickerRepository;
+  private readonly idGen: IdGenerator;
+  private readonly clock: Clock;
+
   constructor(
-    private readonly db: Database,
-    private readonly packs: PackRepository,
-    private readonly stickers: StickerRepository,
-    private readonly idGen: IdGenerator,
-    private readonly clock: Clock,
-  ) {}
+    db: Database,
+    packs: PackRepository,
+    stickers: StickerRepository,
+    idGen: IdGenerator,
+    clock: Clock,
+  ) {
+    this.db = db;
+    this.packs = packs;
+    this.stickers = stickers;
+    this.idGen = idGen;
+    this.clock = clock;
+  }
 
   // Creates a new pack with a generated UUID. One tx write.
   async createPack(name: string): Promise<Pack> {

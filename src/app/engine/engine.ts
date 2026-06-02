@@ -6,11 +6,11 @@ import type { Clock } from '../ports/clock';
 import type { ZipCodecPort } from '../ports/zipCodecPort';
 import type { ModeName } from '../../domain/values/modeName';
 import type { KeyEvent, StatuslineModel } from '../modes/mode';
-import { AppState } from './appState';
+import type { AppState } from './appState';
 import { AllSelection } from '../../domain/selection/sidebarSelection';
 import { RecentSort } from '../../domain/sort/stickerSort';
 import { FlashScheduler } from './flash';
-import { Intent, reduce } from './intents';
+import { type Intent, reduce } from './intents';
 import { ModeRegistry } from '../modes/modeRegistry';
 import { YankService } from '../services/yankService';
 import { PackService } from '../services/packService';
@@ -134,10 +134,12 @@ export class EngineImpl implements EngineStore {
   private readonly flashScheduler = new FlashScheduler();
   private readonly registry: IModeRegistry;
   private readonly svc: Services | null;
+  private readonly ports: EnginePorts;
 
   // The optional `registry` parameter lets tests inject a spy registry without
   // touching the real ModeRegistry.
-  constructor(private readonly ports: EnginePorts, registry?: IModeRegistry) {
+  constructor(ports: EnginePorts, registry?: IModeRegistry) {
+    this.ports = ports;
     this.state = buildInitialState(ports.kv);
     this.registry = registry ?? new ModeRegistry();
     this.svc = buildServices(ports);

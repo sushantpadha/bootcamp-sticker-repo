@@ -19,8 +19,11 @@ import type { CommandRegistry } from '../commands/registry';
 //   Escape           — discard buffer, transition to NORMAL
 export class CommandMode implements Mode {
   readonly name = 'COMMAND' as const;
+  private readonly registry: CommandRegistry;
 
-  constructor(private readonly registry: CommandRegistry) {}
+  constructor(registry: CommandRegistry) {
+    this.registry = registry;
+  }
 
   onEnter(engine: Engine): void {
     engine.setStatusInput('');
