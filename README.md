@@ -62,9 +62,7 @@ Full keybinding reference: press `?` in the app.
 ## Diagnostics
 
 ```bash
-npx tsc -p tsconfig.app.json --noEmit   # type errors incl. verbatimModuleSyntax
-npm run lint                             # ESLint
-npm run build                            # full bundle check
+npm run check   # types + lint + build — stops on first failure
 ```
 
 ## Tests

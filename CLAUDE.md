@@ -49,6 +49,8 @@ Browser globals (`indexedDB`, `navigator`, `localStorage`, `crypto`) may be refe
 
 ## Diagnostics
 
+Run `npm run check` after any change. It runs all three checks in sequence and stops on first failure.
+
 | Command | What it checks |
 |---|---|
 | `npx tsc -p tsconfig.app.json --noEmit` | Type errors, including `verbatimModuleSyntax` violations |
@@ -57,12 +59,10 @@ Browser globals (`indexedDB`, `navigator`, `localStorage`, `crypto`) may be refe
 
 ## Milestone completion checklist
 
-Before marking any milestone done, run all three diagnostics in order and confirm each passes before moving to the next. Stop and fix errors before proceeding.
+Before marking any milestone done, run `npm run check` and confirm it passes, then run tests.
 
-1. `npx tsc -p tsconfig.app.json --noEmit` — must exit with no errors
-2. `npm run lint` — must exit clean (no errors)
-3. `npm run build` — must produce a successful bundle
-4. `npm test` — all tests must pass
+1. `npm run check` — must exit clean (types + lint + build)
+2. `npm test` — all tests must pass
 
 ## Tests
 
