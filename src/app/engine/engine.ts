@@ -72,15 +72,23 @@ function buildInitialState(kv: KeyValueStore): AppState {
 //                  store consumers.
 //
 // Modes receive `this` cast to the Engine interface; they never see EngineImpl.
+// Minimal registry shape the engine depends on — satisfied by ModeRegistry and
+// by inline test doubles without requiring ModeRegistry to be a concrete dep.
+export interface IModeRegistry {
+  get(name: ModeName): import('../modes/mode').Mode | null;
+}
+
 export class EngineImpl implements EngineStore {
   private state: AppState;
   private readonly listeners = new Set<() => void>();
   private readonly flashScheduler = new FlashScheduler();
-  private readonly registry: ModeRegistry;
+  private readonly registry: IModeRegistry;
 
-  constructor(private readonly ports: EnginePorts) {
+  // The optional `registry` parameter lets tests inject a spy registry without
+  // touching the real ModeRegistry.
+  constructor(private readonly ports: EnginePorts, registry?: IModeRegistry) {
     this.state = buildInitialState(ports.kv);
-    this.registry = new ModeRegistry();
+    this.registry = registry ?? new ModeRegistry();
   }
 
   // ── EngineStore ───────────────────────────────────────────────────────────────

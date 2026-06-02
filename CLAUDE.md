@@ -47,6 +47,27 @@ Browser globals (`indexedDB`, `navigator`, `localStorage`, `crypto`) may be refe
 
 4. **Keep every supertype narrow.** Across the codebase: find the behavior that is *genuinely* common and make only that the supertype; never widen a base type with an operation some subtype cannot honor. Violations show up as `if (x.isSpecial)` guards — treat any such guard on a substitutable type as a design defect.
 
+## Tests
+
+Run: `npm test` (once) or `npm run test:watch`.
+
+All tests live in `src/test/engine.test.ts`. They exercise the engine + Mode FSM
+using the fakes in `src/test/fakes/` — no DOM, no UI.
+
+When adding a test that needs to observe mode lifecycle calls (`onEnter`/`onExit`),
+inject a custom registry via the second arg of `EngineImpl`:
+
+```ts
+const engine = new EngineImpl({ kv: new FakeKeyValueStore() }, myRegistry);
+```
+
+`IModeRegistry` (exported from `app/engine/engine.ts`) is the interface to satisfy —
+any object with `get(name: ModeName): Mode | null` qualifies.
+
+**Do not merge `vitest.config.ts` into `vite.config.ts`.** The project's Vite 8
+depends on rolldown, which requires Node 20. `vitest.config.ts` imports only from
+`vitest/config` (Vite 5 bundle) so tests run on Node 18.
+
 ## Reading reminder
 
 When starting any task, read the docs listed for that task before writing any code.

@@ -59,6 +59,26 @@ Full keybinding reference: press `?` in the app.
 :help
 ```
 
+## Tests
+
+```bash
+npm test          # run once
+npm run test:watch  # watch mode
+```
+
+Tests live in `src/test/engine.test.ts`. They cover the engine/FSM layer only —
+no UI, no DOM. The suite uses `src/test/fakes/` as in-memory port substitutes.
+
+**Adding tests:** write a new `it(...)` in `engine.test.ts` (or a new `describe`
+block in the same file for a new subject). Use `makeEngine(registry?)` to get a
+wired engine and `FakeKeyValueStore` for the KV port. Inject a custom registry
+(`makeRegistry(...)`) when you need to observe mode lifecycle calls.
+
+**Node version note:** Vitest runs against its own bundled Vite 5 via
+`vitest.config.ts`; `vite.config.ts` is only used by the dev server. Do not
+merge the two configs — the project's Vite 8 requires Node 20, but tests run
+fine on Node 18.
+
 ## Architecture
 
 Ports-and-adapters with a vanilla engine (no state library) that React reads via
