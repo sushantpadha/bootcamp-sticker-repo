@@ -3,6 +3,8 @@ import type { EngineStore } from '../app/engine/engine';
 import type { Sticker } from '../domain/entities/sticker';
 import { useEngine } from './useEngine';
 import { KeyboardCapture } from './KeyboardCapture';
+import { Grid } from './Grid';
+import { Sidebar } from './Sidebar';
 import './theme/themeVars.css';
 
 // ── Object URL memoization ────────────────────────────────────────────────────
@@ -84,9 +86,6 @@ export function AppRoot({ engine }: Props) {
     html.classList.add(`theme-${snapshot.theme}`);
   }, [snapshot.theme]);
 
-  // Suppress "unused" warning — objectURLs will be consumed by Grid in M13.
-  void objectURLs;
-  void dispatch;
 
   return (
     <div
@@ -111,7 +110,9 @@ export function AppRoot({ engine }: Props) {
             background: 'var(--bg-sidebar)',
             borderRight: '1px solid var(--border)',
           }}
-        />
+        >
+          <Sidebar snapshot={snapshot} dispatch={dispatch} />
+        </div>
 
         {/* Grid — remaining width, internally scrollable */}
         <div
@@ -121,7 +122,9 @@ export function AppRoot({ engine }: Props) {
             overflowX: 'hidden',
             background: 'var(--bg-grid)',
           }}
-        />
+        >
+          <Grid snapshot={snapshot} objectURLs={objectURLs} dispatch={dispatch} />
+        </div>
       </div>
 
       {/* Statusline — 28 px tall, never scrolls */}
