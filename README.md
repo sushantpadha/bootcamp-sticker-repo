@@ -13,7 +13,10 @@ no sync, no account. Your stickers stay in IndexedDB until you export them.
 
 ## Running it
 
+Requires Node.js 20.x.
+
 ```bash
+node --version # should print v20.x
 npm install
 npm run dev
 ```
@@ -100,7 +103,7 @@ domain/      → pure entities, sort, search, naming
 bootstrap/   → sole instantiation site for infra
 ```
 
-See `docs/ARCHITECTURE.md` for the full model.
+See `docs/ARCHITECTURE.md` for the full model. `docs/SPEC.md` is the original product specification.
 
 ## Tech stack
 

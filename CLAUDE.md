@@ -6,12 +6,17 @@ Read the doc(s) listed for your task before writing any code.
 
 | File | Authoritative for |
 |---|---|
-| `docs/TASKS.md` | Ordered build milestones, global ordering gates (G1, G2) |
+| `docs/SPEC.md` | Source of truth for product behavior — consult when explicitly asked to verify spec alignment |
+| `docs/COMPLETED_TASKS.md` | Completed build milestones, global ordering gates (G1, G2) |
 | `docs/ARCHITECTURE.md` | Directory structure, layer boundaries, import rules, composition root, LSP macro-decisions |
 | `docs/DOMAIN.md` | Entity shapes, SupportedMime, pure substitutable contracts (selection, sort, command, candidate, naming, search) |
 | `docs/IDB.md` | Port interfaces, IDB schema, transaction discipline, ArrayBuffer/Blob boundary, fake contract |
 | `docs/MODES.md` | Mode FSM contract, engine handle, single-active-mode invariant, per-mode enter/exit, input buffer, statusline model |
 | `docs/STATE.md` | AppState snapshot shape, intent catalog, derived values, flash scheduling, persistence decision |
+
+## Current focus
+
+All milestones are complete. Work now targets bridging gaps between the implementation and the spec, and fixing bugs. When asked to verify spec alignment, read `docs/SPEC.md` first.
 
 ## Global ordering gates
 
