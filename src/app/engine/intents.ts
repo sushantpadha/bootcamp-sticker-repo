@@ -59,7 +59,10 @@ export type Intent =
 
   // Flash
   | { type: 'flash'; text: string; isError: boolean }
-  | { type: 'clearFlash' };
+  | { type: 'clearFlash' }
+
+  // Upload queue
+  | { type: 'clearUploadQueue' };
 
 // ── Pure reducer ───────────────────────────────────────────────────────────────
 // Returns the same reference when nothing changes so getSnapshot stays stable.
@@ -224,6 +227,9 @@ export function reduce(state: AppState, intent: Intent): AppState {
 
     case 'clearFlash':
       return state.flash === null ? state : { ...state, flash: null };
+
+    case 'clearUploadQueue':
+      return state.uploadQueue.length === 0 ? state : { ...state, uploadQueue: [] };
   }
 }
 

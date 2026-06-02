@@ -1,4 +1,9 @@
 import type { KeyValueStore } from '../ports/keyValueStore';
+import type { Database, StickerRepository, PackRepository } from '../ports/database';
+import type { ClipboardPort } from '../ports/clipboardPort';
+import type { IdGenerator } from '../ports/idGenerator';
+import type { Clock } from '../ports/clock';
+import type { ZipCodecPort } from '../ports/zipCodecPort';
 import type { ModeName } from '../../domain/values/modeName';
 import type { KeyEvent } from '../modes/mode';
 import { AppState } from './appState';
@@ -7,6 +12,10 @@ import { RecentSort } from '../../domain/sort/stickerSort';
 import { FlashScheduler } from './flash';
 import { Intent, reduce } from './intents';
 import { ModeRegistry } from '../modes/modeRegistry';
+import { YankService } from '../services/yankService';
+import { PackService } from '../services/packService';
+import { ExportService } from '../services/exportService';
+import { ImportService } from '../services/importService';
 
 // Re-export the Engine (mode-facing) interface so callers only need one import.
 export type { Engine } from './engineHandle';
@@ -33,12 +42,45 @@ export interface EngineStore {
 // ── Ports required by the engine ──────────────────────────────────────────────
 export interface EnginePorts {
   kv: KeyValueStore;
-  // Additional ports (clipboard, db, repos, idGen) injected here in M8 when
-  // services are wired. The engine itself never calls them directly.
+  // M8 service ports — optional. When absent, IDB-touching intents remain
+  // no-ops (M7 behaviour preserved; existing tests continue to pass).
+  db?: Database;
+  stickers?: StickerRepository;
+  packs?: PackRepository;
+  clipboard?: ClipboardPort;
+  idGen?: IdGenerator;
+  clock?: Clock;
+  zip?: ZipCodecPort;
+  onDownloadFallback?: (blob: Blob, name: string) => void;
+}
+
+// Bundle of instantiated services created when IDB ports are present.
+interface Services {
+  yank: YankService;
+  pack: PackService;
+  export: ExportService;
+  import: ImportService;
 }
 
 const FLASH_DURATION_MS = 2000;
 const THEME_KEY = 'theme';
+
+function buildServices(ports: EnginePorts): Services | null {
+  if (!ports.db || !ports.stickers || !ports.packs || !ports.clipboard ||
+      !ports.idGen || !ports.clock || !ports.zip) {
+    return null;
+  }
+  return {
+    yank:   new YankService(ports.clipboard, ports.db, ports.stickers, ports.clock, ports.onDownloadFallback),
+    pack:   new PackService(ports.db, ports.packs, ports.stickers, ports.idGen, ports.clock),
+    export: new ExportService(ports.zip),
+    import: new ImportService(ports.db, ports.stickers, ports.packs, ports.idGen, ports.clock, ports.zip),
+  };
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 function loadTheme(kv: KeyValueStore): 'dark' | 'light' {
   const saved = kv.get(THEME_KEY);
@@ -83,12 +125,14 @@ export class EngineImpl implements EngineStore {
   private readonly listeners = new Set<() => void>();
   private readonly flashScheduler = new FlashScheduler();
   private readonly registry: IModeRegistry;
+  private readonly svc: Services | null;
 
   // The optional `registry` parameter lets tests inject a spy registry without
   // touching the real ModeRegistry.
   constructor(private readonly ports: EnginePorts, registry?: IModeRegistry) {
     this.state = buildInitialState(ports.kv);
     this.registry = registry ?? new ModeRegistry();
+    this.svc = buildServices(ports);
   }
 
   // ── EngineStore ───────────────────────────────────────────────────────────────
@@ -113,6 +157,19 @@ export class EngineImpl implements EngineStore {
     // Theme persistence (decision D — only theme persists via KeyValueStore).
     if (intent.type === 'setTheme') {
       this.ports.kv.set(THEME_KEY, intent.theme);
+    }
+
+    // Service routing — IDB-touching intents are fire-and-forget async calls.
+    // When ports.db is absent (M1–M7 path), these remain no-ops in the reducer.
+    if (this.svc) {
+      switch (intent.type) {
+        case 'yankFocused':   this.handleYankFocused();              break;
+        case 'deleteFocused': this.handleDeleteFocused();            break;
+        case 'renameFocused': this.handleRenameFocused(intent.name); break;
+        case 'setTags':       this.handleSetTags(intent.tags);       break;
+        case 'assignPacks':   this.handleAssignPacks(intent.packNames); break;
+        case 'saveUpload':    this.handleSaveUpload();               break;
+      }
     }
 
     const next = reduce(this.state, intent);
@@ -192,6 +249,62 @@ export class EngineImpl implements EngineStore {
 
   private setStatusInput(s: string): void {
     this.dispatch({ type: 'setStatusInput', value: s });
+  }
+
+  // ── Service handlers (fire-and-forget async; errors become flash messages) ────
+
+  private handleYankFocused(): void {
+    const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
+    if (!sticker) return;
+    this.svc!.yank.yank(sticker)
+      .then(updated => this.dispatch({ type: 'applySticker', sticker: updated }))
+      .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
+  }
+
+  private handleDeleteFocused(): void {
+    const id = this.state.focusId;
+    if (!id) return;
+    this.svc!.yank.deleteSticker(id)
+      .then(() => this.dispatch({ type: 'removeSticker', id }))
+      .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
+  }
+
+  private handleRenameFocused(name: string): void {
+    const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
+    if (!sticker) return;
+    this.svc!.yank.renameSticker(sticker, name, this.state.stickers)
+      .then(updated => this.dispatch({ type: 'applySticker', sticker: updated }))
+      .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
+  }
+
+  private handleSetTags(tags: string[]): void {
+    const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
+    if (!sticker) return;
+    this.svc!.yank.setTags(sticker, tags)
+      .then(updated => this.dispatch({ type: 'applySticker', sticker: updated }))
+      .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
+  }
+
+  private handleAssignPacks(packNames: string[]): void {
+    const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
+    if (!sticker) return;
+    this.svc!.pack.assignPacks(sticker, packNames, this.state.packs, this.state.stickers)
+      .then(({ sticker: updated, newPacks }) => {
+        this.dispatch({ type: 'applySticker', sticker: updated });
+        for (const p of newPacks) this.dispatch({ type: 'applyPack', pack: p });
+      })
+      .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
+  }
+
+  private handleSaveUpload(): void {
+    const { uploadQueue, stickers, packs } = this.state;
+    this.svc!.import.saveUpload(uploadQueue, stickers, packs)
+      .then(({ stickers: newStickers, newPacks }) => {
+        this.dispatch({ type: 'applyStickers', stickers: newStickers });
+        for (const p of newPacks) this.dispatch({ type: 'applyPack', pack: p });
+        this.dispatch({ type: 'clearUploadQueue' });
+      })
+      .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
   }
 
   // ── Private ───────────────────────────────────────────────────────────────────
