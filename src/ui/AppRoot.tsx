@@ -5,6 +5,7 @@ import { useEngine } from './useEngine';
 import { KeyboardCapture } from './KeyboardCapture';
 import { Grid } from './Grid';
 import { Sidebar } from './Sidebar';
+import { Statusline } from './Statusline';
 import './theme/themeVars.css';
 
 // ── Object URL memoization ────────────────────────────────────────────────────
@@ -86,7 +87,6 @@ export function AppRoot({ engine }: Props) {
     html.classList.add(`theme-${snapshot.theme}`);
   }, [snapshot.theme]);
 
-
   return (
     <div
       style={{
@@ -135,7 +135,9 @@ export function AppRoot({ engine }: Props) {
           background: 'var(--bg-statusline)',
           borderTop: '1px solid var(--border)',
         }}
-      />
+      >
+        <Statusline model={engine.getStatuslineModel()} flash={snapshot.flash} />
+      </div>
 
       <KeyboardCapture engine={engine} snapshot={snapshot} />
     </div>
