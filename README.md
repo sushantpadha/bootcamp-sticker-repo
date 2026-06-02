@@ -59,6 +59,12 @@ Full keybinding reference: press `?` in the app.
 :help
 ```
 
+## Development commands
+
+```bash
+npm run lint        # lint all source files
+```
+
 ## Tests
 
 ```bash

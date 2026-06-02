@@ -47,6 +47,13 @@ Browser globals (`indexedDB`, `navigator`, `localStorage`, `crypto`) may be refe
 
 4. **Keep every supertype narrow.** Across the codebase: find the behavior that is *genuinely* common and make only that the supertype; never widen a base type with an operation some subtype cannot honor. Violations show up as `if (x.isSpecial)` guards — treat any such guard on a substitutable type as a design defect.
 
+## Milestone completion checklist
+
+Before marking any milestone done, run both of the following and confirm they pass:
+
+1. `npm run lint` — must exit clean (no errors)
+2. `npm test` — all tests must pass
+
 ## Tests
 
 Run: `npm test` (once) or `npm run test:watch`.
