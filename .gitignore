@@ -233,21 +233,6 @@ psd
 thumb
 sketch
 
-### Web ###
-*.asp
-*.cer
-*.csr
-*.css
-*.htm
-*.html
-*.js
-*.jsp
-*.php
-*.rss
-*.wasm
-*.wat
-*.xhtml
-
 # End of https://www.toptal.com/developers/gitignore/api/linux,macos,nextjs,node,react,web
 
 # Custom rules (everything added below won't be overriden by 'Generate .gitignore File' if you use 'Update' option)
@@ -276,3 +261,5 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+.claude/

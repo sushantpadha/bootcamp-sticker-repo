@@ -13,7 +13,10 @@ no sync, no account. Your stickers stay in IndexedDB until you export them.
 
 ## Running it
 
+Requires Node.js 20.x.
+
 ```bash
+node --version # should print v20.x
 npm install
 npm run dev
 ```
@@ -59,6 +62,32 @@ Full keybinding reference: press `?` in the app.
 :help
 ```
 
+## Diagnostics
+
+```bash
+npm run check   # types + lint + build — stops on first failure
+```
+
+## Tests
+
+```bash
+npm test          # run once
+npm run test:watch  # watch mode
+```
+
+Tests live in `src/test/engine.test.ts`. They cover the engine/FSM layer only —
+no UI, no DOM. The suite uses `src/test/fakes/` as in-memory port substitutes.
+
+**Adding tests:** write a new `it(...)` in `engine.test.ts` (or a new `describe`
+block in the same file for a new subject). Use `makeEngine(registry?)` to get a
+wired engine and `FakeKeyValueStore` for the KV port. Inject a custom registry
+(`makeRegistry(...)`) when you need to observe mode lifecycle calls.
+
+**Node version note:** Vitest runs against its own bundled Vite 5 via
+`vitest.config.ts`; `vite.config.ts` is only used by the dev server. Do not
+merge the two configs — the project's Vite 8 requires Node 20, but tests run
+fine on Node 18.
+
 ## Architecture
 
 Ports-and-adapters with a vanilla engine (no state library) that React reads via
@@ -74,7 +103,7 @@ domain/      → pure entities, sort, search, naming
 bootstrap/   → sole instantiation site for infra
 ```
 
-See `docs/ARCHITECTURE.md` for the full model.
+See `docs/ARCHITECTURE.md` for the full model. `docs/SPEC.md` is the original product specification.
 
 ## Tech stack
 
