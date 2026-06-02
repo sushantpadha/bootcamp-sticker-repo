@@ -1,14 +1,14 @@
-// Serialisable metadata carried in the zip manifest (no ArrayBuffer; bytes are
-// separate entries keyed by filename).
-export interface ZipManifestEntry {
+// IDB.md §ZIP export/import format
+
+export interface ZipStickerEntry {
   id: string;
   name: string;
   packIds: string[];
   tags: string[];
-  mimeType: string;
+  mimeType: 'image/png' | 'image/gif' | 'image/webp';
   createdAt: number;
   lastUsedAt: number;
-  filename: string; // relative path of the image file inside the zip
+  file: string;             // path inside zip, e.g. "stickers/<id>.gif"
 }
 
 export interface ZipPackEntry {
@@ -17,15 +17,16 @@ export interface ZipPackEntry {
   createdAt: number;
 }
 
-export interface ZipManifest {
+export interface ExportManifest {
   version: 1;
-  stickers: ZipManifestEntry[];
+  exportedAt: number;
   packs: ZipPackEntry[];
+  stickers: ZipStickerEntry[];
 }
 
 // [LSP] Both methods throw on failure (decision J).
-//       files map: filename -> ArrayBuffer (no Blob; Application layer owns Blob↔AB conversions).
+//       files map: file-path -> ArrayBuffer.
 export interface ZipCodecPort {
-  pack(manifest: ZipManifest, files: Map<string, ArrayBuffer>): Promise<Blob>;
-  unpack(file: File): Promise<{ manifest: ZipManifest; files: Map<string, ArrayBuffer> }>;
+  pack(manifest: ExportManifest, files: Map<string, ArrayBuffer>): Promise<Blob>;
+  unpack(file: File): Promise<{ manifest: ExportManifest; files: Map<string, ArrayBuffer> }>;
 }

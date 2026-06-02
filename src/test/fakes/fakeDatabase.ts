@@ -8,46 +8,58 @@ export interface FakeStore {
   packs: Map<string, Pack>;
 }
 
-// Concrete TxScope for FakeDatabase. Holds a working copy of the committed
-// maps so reads see prior writes within the same tx and rollback is free.
+// Per-tx scope. Holds a working copy of committed maps so writes stay staged
+// until tx commit. Enforces the `allowedStores` argument (real IDB throws if
+// you touch a store outside the listed set; the fake matches this).
 export class FakeTxScope extends TxScope {
   protected readonly _brand = undefined as void;
   private readonly committed: FakeStore;
   readonly mode: 'readonly' | 'readwrite';
-
-  // Working copies; flushed to committed only on success.
+  readonly allowedStores: ReadonlySet<StoreName>;
   readonly view: FakeStore;
+
+  // Closed once tx() returns; subsequent repo calls on this scope throw
+  // (mirrors real IDB's "Transaction is finished" error).
+  private closed = false;
 
   constructor(
     committed: FakeStore,
     mode: 'readonly' | 'readwrite',
+    stores: StoreName[],
   ) {
     super();
     this.committed = committed;
     this.mode = mode;
-    // Shallow-copy each map so the tx sees a snapshot and writes stay staged.
+    this.allowedStores = new Set(stores);
     this.view = {
       stickers: new Map(committed.stickers),
       packs:    new Map(committed.packs),
     };
   }
 
-  // Called by FakeDatabase after the body returns without throwing.
   flush(): void {
     this.committed.stickers.clear();
     for (const [k, v] of this.view.stickers) this.committed.stickers.set(k, v);
     this.committed.packs.clear();
     for (const [k, v] of this.view.packs) this.committed.packs.set(k, v);
   }
+
+  close(): void {
+    this.closed = true;
+  }
+
+  assertOpen(): void {
+    if (this.closed) {
+      throw new Error('Transaction is finished');
+    }
+  }
 }
 
-// Cast helper used by FakeRepository implementations. Throws if the scope was
-// not created by FakeDatabase, matching the real IDB behaviour of rejecting
-// operations outside an open transaction.
 export function asFakeTxScope(scope: TxScope): FakeTxScope {
   if (!(scope instanceof FakeTxScope)) {
     throw new Error('Operation issued outside a FakeDatabase transaction');
   }
+  scope.assertOpen();
   return scope;
 }
 
@@ -58,15 +70,23 @@ export class FakeDatabase implements Database {
   };
 
   async tx<T>(
-    _stores: StoreName[],
+    stores: StoreName[],
     mode: 'readonly' | 'readwrite',
     body: (scope: TxScope) => T,
   ): Promise<T> {
-    const scope = new FakeTxScope(this.store, mode);
-    // Body threw — scope discarded; committed state untouched (rollback).
-    const result = body(scope);
-    // Body returned successfully — commit staged writes.
+    const scope = new FakeTxScope(this.store, mode, stores);
+    let result: T;
+    try {
+      result = body(scope);
+    } catch (e) {
+      scope.close();
+      throw e;
+    }
+    // Body returned. If the result is a Promise (body was async), we surface
+    // it but close the scope first — matching real IDB behavior where any
+    // foreign await inside body would have auto-closed the tx.
     scope.flush();
+    scope.close();
     return result;
   }
 

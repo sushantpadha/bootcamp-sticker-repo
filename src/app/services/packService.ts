@@ -1,8 +1,17 @@
-import type { Pack } from '../../domain/entities/pack';
+import type { Pack, CreatePackInput } from '../../domain/entities/pack';
 import type { Sticker } from '../../domain/entities/sticker';
 import type { Database, PackRepository, StickerRepository } from '../ports/database';
 import type { IdGenerator } from '../ports/idGenerator';
 import type { Clock } from '../ports/clock';
+import { createPack } from '../../domain/entities/pack';
+import { resolveNameCollision } from '../../domain/naming/resolveNameCollision';
+
+export interface MoveResult {
+  sticker: Sticker;       // updated focused sticker
+  pack: Pack;             // the destination pack (existing or new)
+  created: boolean;       // true iff pack was created in this op
+  alreadyMember: boolean; // true iff sticker was already in pack (no-op write)
+}
 
 export class PackService {
   private readonly db: Database;
@@ -25,21 +34,31 @@ export class PackService {
     this.clock = clock;
   }
 
-  // Creates a new pack with a generated UUID. One tx write.
-  async createPack(name: string): Promise<Pack> {
-    const pack: Pack = {
+  // Create a pack with the given name. Throws if a pack with that name already
+  // exists (DOMAIN.md §:pack new collision rule). Single tx.
+  async createPackWithName(name: string, allPacks: Pack[]): Promise<Pack> {
+    if (allPacks.some(p => p.name === name)) {
+      throw new Error(`pack "${name}" already exists`);
+    }
+    const input: CreatePackInput = {
       id: this.idGen.uuid(),
       name,
       createdAt: this.clock.now(),
     };
+    const pack = createPack(input);
     await this.db.tx(['packs'], 'readwrite', scope => {
       this.packs.put(scope, pack);
     });
     return pack;
   }
 
-  // Renames the pack. One tx write.
-  async renamePack(pack: Pack, newName: string): Promise<Pack> {
+  // Rename an existing pack. Idempotent if newName === pack.name. Throws if
+  // another pack already uses newName.
+  async renamePackTo(pack: Pack, newName: string, allPacks: Pack[]): Promise<Pack> {
+    if (pack.name === newName) return pack;
+    if (allPacks.some(p => p.id !== pack.id && p.name === newName)) {
+      throw new Error(`pack "${newName}" already exists`);
+    }
     const updated: Pack = { ...pack, name: newName };
     await this.db.tx(['packs'], 'readwrite', scope => {
       this.packs.put(scope, updated);
@@ -47,9 +66,9 @@ export class PackService {
     return updated;
   }
 
-  // Deletes the pack and strips its id from every sticker that references it.
-  // One tx over both stores (IDB.md: one tx per operation).
-  async deletePack(packId: string, allStickers: Sticker[]): Promise<void> {
+  // Delete a pack and strip its id from every sticker that referenced it.
+  // Single tx over both stores. Returns count of affected stickers.
+  async deletePackAndCleanup(packId: string, allStickers: Sticker[]): Promise<number> {
     const affected = allStickers.filter(s => s.packIds.includes(packId));
     await this.db.tx(['stickers', 'packs'], 'readwrite', scope => {
       this.packs.delete(scope, packId);
@@ -60,42 +79,79 @@ export class PackService {
         });
       }
     });
+    return affected.length;
   }
 
-  // Resolves pack names to IDs (creating packs that don't exist yet), then
-  // updates the sticker's packIds. All non-IDB logic runs before the tx.
-  // Returns the updated sticker and any newly created packs.
+  // Move focused sticker into a named pack (create-if-missing).
+  // See DOMAIN.md §:pack move.
+  async movePackForSticker(
+    sticker: Sticker,
+    packName: string,
+    allPacks: Pack[],
+    allStickers: Sticker[],
+  ): Promise<MoveResult> {
+    const existing = allPacks.find(p => p.name === packName);
+    if (existing && sticker.packIds.includes(existing.id)) {
+      return { sticker, pack: existing, created: false, alreadyMember: true };
+    }
+    const pack: Pack = existing ?? createPack({
+      id: this.idGen.uuid(),
+      name: packName,
+      createdAt: this.clock.now(),
+    });
+    const newPackIds = [...sticker.packIds, pack.id];
+    const resolvedName = resolveNameCollision(
+      sticker.name,
+      newPackIds,
+      allStickers.filter(s => s.id !== sticker.id),
+    );
+    const updatedSticker: Sticker = {
+      ...sticker,
+      name: resolvedName,
+      packIds: newPackIds,
+    };
+    await this.db.tx(['stickers', 'packs'], 'readwrite', scope => {
+      if (!existing) this.packs.put(scope, pack);
+      this.stickers.put(scope, updatedSticker);
+    });
+    return { sticker: updatedSticker, pack, created: existing === undefined, alreadyMember: false };
+  }
+
+  // PACKASSIGN mode handler — resolve a list of pack names to ids
+  // (creating missing packs), apply collision-resolved rename if needed,
+  // write everything in one tx.
   async assignPacks(
     sticker: Sticker,
     packNames: string[],
     allPacks: Pack[],
-    _allStickers: Sticker[],
+    allStickers: Sticker[],
   ): Promise<{ sticker: Sticker; newPacks: Pack[] }> {
-    // Resolve names → existing packs and collect names that need creation.
     const resolved: Pack[] = [];
     const toCreate: string[] = [];
     for (const name of packNames) {
       const existing = allPacks.find(p => p.name === name);
-      if (existing) {
-        resolved.push(existing);
-      } else {
-        toCreate.push(name);
-      }
+      if (existing) resolved.push(existing);
+      else if (!toCreate.includes(name)) toCreate.push(name);
     }
-
-    // Build new Pack objects outside the tx (id generation is not IDB async).
-    const newPacks: Pack[] = toCreate.map(name => ({
+    const newPacks: Pack[] = toCreate.map(name => createPack({
       id: this.idGen.uuid(),
       name,
       createdAt: this.clock.now(),
     }));
+    const newPackIds = [...new Set([...resolved, ...newPacks].map(p => p.id))];
+
+    const resolvedName = resolveNameCollision(
+      sticker.name,
+      newPackIds,
+      allStickers.filter(s => s.id !== sticker.id),
+    );
 
     const updatedSticker: Sticker = {
       ...sticker,
-      packIds: [...new Set([...resolved, ...newPacks].map(p => p.id))],
+      name: resolvedName,
+      packIds: newPackIds,
     };
 
-    // One tx for all writes: new packs + updated sticker.
     await this.db.tx(['stickers', 'packs'], 'readwrite', scope => {
       for (const p of newPacks) this.packs.put(scope, p);
       this.stickers.put(scope, updatedSticker);

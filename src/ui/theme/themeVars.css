@@ -1,12 +1,13 @@
+/* ─── Fonts ──────────────────────────────────────────────────────────────── */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-/* ─── Global typography ──────────────────────────────────────────────────── */
+/* ─── Global resets ──────────────────────────────────────────────────────── */
 
 *,
 *::before,
 *::after {
   box-sizing: border-box;
-  border-radius: 0 !important;
+  border-radius: 0 !important;   /* SPEC: no rounded corners anywhere */
 }
 
 html {
@@ -16,7 +17,6 @@ html {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  font-feature-settings: 'liga' 1, 'calt' 1;
 }
 
 body {
@@ -24,135 +24,38 @@ body {
   overflow: hidden;
 }
 
-/* ─── Dark theme ─────────────────────────────────────────────────────────── */
+/* SPEC: hide scrollbars globally but keep scrollable. */
+* {
+  scrollbar-width: none;
+}
+*::-webkit-scrollbar {
+  display: none;
+}
 
+/* ─── Dark theme — terminal green on black (SPEC §Themes) ───────────────── */
 .theme-dark {
-  /* Backgrounds */
-  --bg:               #1a1b26;
-  --bg-sidebar:       #16171f;
-  --bg-grid:          #1a1b26;
-  --bg-statusline:    #13141c;
-  --bg-overlay:       rgba(0, 0, 0, 0.65);
-  --bg-overlay-panel: #1f2032;
-  --bg-cell:          #1f2032;
-  --bg-cell-hover:    #252638;
-  --bg-cell-focus:    #2a2c42;
-  --bg-input:         #13141c;
-  --bg-selection:     #2a2c42;
-
-  /* Text */
-  --text:             #a9b1d6;
-  --text-dim:         #565f89;
-  --text-bright:      #c0caf5;
-  --text-hint:        #414868;
-  --text-error:       #f7768e;
-  --text-warn:        #e0af68;
-  --text-ok:          #9ece6a;
-  --text-muted:       #3b4261;
-
-  /* Borders */
-  --border:           #292e42;
-  --border-focus:     #7aa2f7;
-  --border-active:    #7dcfff;
-  --border-error:     #f7768e;
-
-  /* Accent / mode label */
-  --accent:           #7aa2f7;
-  --accent-bg:        rgba(122, 162, 247, 0.12);
-  --accent-dim:       #3d59a1;
-
-  /* Mode label colors */
-  --mode-normal:      #7aa2f7;
-  --mode-search:      #9ece6a;
-  --mode-command:     #e0af68;
-  --mode-confirm:     #f7768e;
-  --mode-rename:      #7dcfff;
-  --mode-tags:        #bb9af7;
-  --mode-packassign:  #ff9e64;
-  --mode-upload:      #2ac3de;
-  --mode-help:        #565f89;
-
-  /* Scrollbar */
-  --scrollbar-thumb:  #292e42;
-  --scrollbar-track:  transparent;
-
-  /* Statusline segment separator */
-  --sep:              #292e42;
+  --bg:                 #0a0a0a;
+  --bg-subtle:          #0d1a0d;
+  --border:             #003300;
+  --border-focus:       #00ff00;
+  --text:               #00ff00;
+  --text-dim:           #005500;
+  --text-error:         #ff0000;
+  --highlight-bg:       #0d1a0d;
+  --highlight-border:   #00ff00;
+  --overlay-bg:         rgba(0, 0, 0, 0.7);
 }
 
-/* ─── Light theme ────────────────────────────────────────────────────────── */
-
+/* ─── Light theme — GitHub Light (SPEC §Themes) ─────────────────────────── */
 .theme-light {
-  /* Backgrounds */
-  --bg:               #f5f5f5;
-  --bg-sidebar:       #ebebeb;
-  --bg-grid:          #f5f5f5;
-  --bg-statusline:    #dcdcdc;
-  --bg-overlay:       rgba(0, 0, 0, 0.35);
-  --bg-overlay-panel: #ffffff;
-  --bg-cell:          #ffffff;
-  --bg-cell-hover:    #eef0f8;
-  --bg-cell-focus:    #e0e4f4;
-  --bg-input:         #ffffff;
-  --bg-selection:     #e0e4f4;
-
-  /* Text */
-  --text:             #3b4261;
-  --text-dim:         #828bb8;
-  --text-bright:      #1a1b26;
-  --text-hint:        #a8aecb;
-  --text-error:       #c0392b;
-  --text-warn:        #b07d27;
-  --text-ok:          #33691e;
-  --text-muted:       #c8cadb;
-
-  /* Borders */
-  --border:           #c8cadb;
-  --border-focus:     #4c6ef5;
-  --border-active:    #1971c2;
-  --border-error:     #c0392b;
-
-  /* Accent / mode label */
-  --accent:           #4c6ef5;
-  --accent-bg:        rgba(76, 110, 245, 0.1);
-  --accent-dim:       #a5b4fc;
-
-  /* Mode label colors */
-  --mode-normal:      #4c6ef5;
-  --mode-search:      #2d6a4f;
-  --mode-command:     #b07d27;
-  --mode-confirm:     #c0392b;
-  --mode-rename:      #1971c2;
-  --mode-tags:        #7950f2;
-  --mode-packassign:  #d9480f;
-  --mode-upload:      #0c8599;
-  --mode-help:        #828bb8;
-
-  /* Scrollbar */
-  --scrollbar-thumb:  #c8cadb;
-  --scrollbar-track:  transparent;
-
-  /* Statusline segment separator */
-  --sep:              #c8cadb;
+  --bg:                 #ffffff;
+  --bg-subtle:          #f6f8fa;
+  --border:             #d0d7de;
+  --border-focus:       #0969da;
+  --text:               #24292f;
+  --text-dim:           #57606a;
+  --text-error:         #cf222e;
+  --highlight-bg:       #ddf4ff;
+  --highlight-border:   #0969da;
+  --overlay-bg:         rgba(255, 255, 255, 0.7);
 }
-
-/* ─── Scrollbar styling (hidden tracks, thin thumb) ─────────────────────── */
-
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border: 1px solid transparent;
-}
-
-/* ─── Border helper ──────────────────────────────────────────────────────── */
-
-/* All borders in the app are 1px solid using --border or a variant. */
-/* border-radius is globally zeroed above via the * selector. */

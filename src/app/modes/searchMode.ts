@@ -2,40 +2,32 @@ import type { Mode, KeyEvent, StatuslineModel, OverlayModel } from './mode';
 import type { Engine } from '../engine/engineHandle';
 import { computeVisibleGrid } from '../engine/appState';
 
-// ── SearchMode ─────────────────────────────────────────────────────────────────
-//
-// Live search: every keystroke updates AppState.search via setSearch intent.
-//
-// enter/exit table (MODES.md):
+// SearchMode — live search input in the statusline.
+// MODES.md per-mode table:
 //   onEnter  — statusInput ← current state.search
-//   onExit   — statusInput cleared; Esc reverts search to pre-enter value
+//   onExit   — statusInput cleared (state.search persists)
+// Esc: clears state.search to "" (SPEC-literal) and returns to NORMAL.
+// Enter: leaves state.search as-is (the live filter committed by keystrokes).
 //
-// Key bindings:
-//   printable char   — append to buffer, dispatch setSearch
-//   Backspace        — delete last char, dispatch setSearch
-//   Enter            — accept current search, transition to NORMAL
-//   Escape           — revert search to pre-enter value, transition to NORMAL
+// NO mode-internal state (per MODES.md decision H/I — only NormalMode is
+// sanctioned to hold gg/digit buffers).
 export class SearchMode implements Mode {
   readonly name = 'SEARCH' as const;
 
-  // The search string that was active when we entered SEARCH mode.
-  // Stored so Esc can revert to it (NORMAL mode picks up state.search).
-  private searchOnEnter = '';
-
   onEnter(engine: Engine): void {
-    const state = engine.getSnapshot();
-    this.searchOnEnter = state.search;
-    engine.setStatusInput(state.search);
+    engine.setStatusInput(engine.getSnapshot().search);
   }
 
-  // [LSP] TOTAL: accepts any KeyEvent; unknown keys are silent no-ops.
   handleKey(evt: KeyEvent, engine: Engine): void {
     const { key, ctrl, alt, meta } = evt;
     if (key === 'Control' || key === 'Shift' || key === 'Alt' || key === 'Meta') return;
-    evt.preventDefault();
+
+    // Per MODES.md decision B: only NORMAL preventDefaults all keys. Input modes
+    // preventDefault on Enter/Tab/Escape only.
+    if (key === 'Enter' || key === 'Tab' || key === 'Escape') evt.preventDefault();
 
     if (key === 'Escape') {
-      engine.dispatch({ type: 'setSearch', query: this.searchOnEnter });
+      engine.dispatch({ type: 'setSearch', query: '' });
       engine.transitionTo('NORMAL');
       return;
     }
@@ -57,11 +49,8 @@ export class SearchMode implements Mode {
         return;
       }
     }
-    // unknown key: no-op (total input contract)
   }
 
-  // [LSP] TOTAL: always returns a renderable model (MODES.md §Decision C).
-  // Format: SEARCH | /query | <matchCount> matches
   statusline(engine: Engine): StatuslineModel {
     const state = engine.getSnapshot();
     const grid = computeVisibleGrid(state);
@@ -72,10 +61,7 @@ export class SearchMode implements Mode {
     };
   }
 
-  // SEARCH has no overlay.
-  overlay(_engine: Engine): OverlayModel | null {
-    return null;
-  }
+  overlay(_engine: Engine): OverlayModel | null { return null; }
 
   onExit(engine: Engine): void {
     engine.setStatusInput('');

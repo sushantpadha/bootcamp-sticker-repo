@@ -1,54 +1,59 @@
 import type { Mode, KeyEvent, StatuslineModel, OverlayModel } from './mode';
 import type { Engine } from '../engine/engineHandle';
 import type { CommandRegistry } from '../commands/registry';
+import type { CommandContext } from '../engine/commandContext';
+import { completeToken } from '../../domain/naming/completeToken';
 
-// ── CommandMode ────────────────────────────────────────────────────────────────
-//
-// Ex-style command entry. Receives a CommandRegistry (injected by ModeRegistry)
-// that resolves and executes commands on Enter.
-//
-// enter/exit table (MODES.md):
-//   onEnter  — statusInput ← ""
-//   onExit   — statusInput cleared
-//
-// Key bindings:
-//   printable char   — append to buffer
-//   Backspace        — delete last char; if buffer empty, exit to NORMAL
-//   Enter            — run command via registry, then transition to NORMAL
-//                      (skipped if the command itself changed the mode)
-//   Escape           — discard buffer, transition to NORMAL
+// CommandMode — ex-style command entry.
+// Tab autocompletes the first token (DOMAIN.md §:command).
+// Enter runs via the injected CommandRegistry; result flash + return to NORMAL
+// unless the command itself changed the mode (e.g. :help).
 export class CommandMode implements Mode {
   readonly name = 'COMMAND' as const;
   private readonly registry: CommandRegistry;
+  private readonly getCtx: () => CommandContext;
 
-  constructor(registry: CommandRegistry) {
+  constructor(registry: CommandRegistry, getCtx: () => CommandContext) {
     this.registry = registry;
+    this.getCtx = getCtx;
   }
 
   onEnter(engine: Engine): void {
     engine.setStatusInput('');
   }
 
-  // [LSP] TOTAL: accepts any KeyEvent; unknown keys are silent no-ops.
   handleKey(evt: KeyEvent, engine: Engine): void {
     const { key, ctrl, alt, meta } = evt;
     if (key === 'Control' || key === 'Shift' || key === 'Alt' || key === 'Meta') return;
-    evt.preventDefault();
+    if (key === 'Enter' || key === 'Tab' || key === 'Escape') evt.preventDefault();
 
     if (key === 'Escape') {
       engine.transitionTo('NORMAL');
       return;
     }
 
+    if (key === 'Tab') {
+      // First-token autocomplete only (per SPEC §Command Palette).
+      const cur = engine.getStatusInput();
+      if (cur.includes(' ')) return; // past the first token; no-op
+      const next = completeToken(cur, this.registry.firstTokens());
+      engine.setStatusInput(next);
+      return;
+    }
+
     if (key === 'Enter') {
       const input = engine.getStatusInput();
+      const ctx = this.getCtx();
       const modeBefore = engine.getSnapshot().modeName;
-      const outcome = this.registry.run(input, engine);
-      if (outcome.flash !== undefined) {
-        engine.setFlash(outcome.flash, !outcome.ok);
-      }
-      // Only return to NORMAL if the command didn't itself trigger a mode change
-      // (e.g. :help transitions to HELP rather than back to NORMAL).
+      // Run async; we transition back optimistically. Async commands handle
+      // their own flashes; sync commands give us an immediate outcome.
+      const result = this.registry.run(input, ctx);
+      Promise.resolve(result).then(outcome => {
+        if (outcome.flash !== undefined) {
+          engine.setFlash(outcome.flash, !outcome.ok);
+        }
+      });
+      // Only return to NORMAL if the command didn't itself change mode.
       if (engine.getSnapshot().modeName === modeBefore) {
         engine.transitionTo('NORMAL');
       }
@@ -57,12 +62,7 @@ export class CommandMode implements Mode {
 
     if (!ctrl && !alt && !meta) {
       if (key === 'Backspace') {
-        const cur = engine.getStatusInput();
-        if (cur.length === 0) {
-          engine.transitionTo('NORMAL');
-        } else {
-          engine.setStatusInput(cur.slice(0, -1));
-        }
+        engine.setStatusInput(engine.getStatusInput().slice(0, -1));
         return;
       }
       if (key.length === 1) {
@@ -70,19 +70,13 @@ export class CommandMode implements Mode {
         return;
       }
     }
-    // unknown key: no-op (total input contract)
   }
 
-  // [LSP] TOTAL: always returns a renderable model (MODES.md §Decision C).
-  // Format: COMMAND | :buffer | —
   statusline(engine: Engine): StatuslineModel {
     return { mode: 'COMMAND', input: `:${engine.getStatusInput()}` };
   }
 
-  // COMMAND has no overlay.
-  overlay(_engine: Engine): OverlayModel | null {
-    return null;
-  }
+  overlay(_engine: Engine): OverlayModel | null { return null; }
 
   onExit(engine: Engine): void {
     engine.setStatusInput('');

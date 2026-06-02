@@ -32,7 +32,17 @@ interface ZipCodecPort   { /* pack(manifest, files) -> Blob; unpack(File) -> {ma
 interface KeyValueStore  { get(k: string): string | null; set(k: string, v: string): void; }
 interface Clock          { now(): number; }
 interface IdGenerator    { uuid(): string; }
+interface Timer          {
+  setTimeout(cb: () => void, ms: number): TimerHandle;
+  clearTimeout(h: TimerHandle): void;
+}
+type TimerHandle = number | object;     // opaque
 ```
+
+The `Timer` port replaces direct `setTimeout`/`clearTimeout` use in
+`app/engine/flash.ts` and `app/modes/normalMode.ts`. Real impl wraps
+globalThis; fake impl advances time deterministically. This is what makes
+flash scheduling and gg/digit-buffer timing testable.
 
 LSP obligations across all ports:
 - **Uniform error surface (decision J).** Any failure throws. The engine is the
@@ -51,6 +61,66 @@ LSP obligations across all ports:
 - On `init()`: open v1, then fire-and-forget `navigator.storage.persist()`.
 - Views never use cursors: `getAll()` into memory, sort/filter in JS (see STATE.md
   derived table).
+
+### Single-tx implementation rule
+
+`IdbDatabase.tx(stores, mode, body)` opens **exactly one** IDB transaction (no
+prefetch-then-write split). Reads and writes inside `body` go through the same
+transaction. Repositories' `getAll`/`get` issue IDB requests against the tx and
+synchronously populate a scope-local Map view; `put`/`delete` issue requests
+against the same tx; commit happens on tx completion. This matches FakeDatabase
+semantics exactly (LSP macro-decision #1).
+
+If the caller lists `stores: ['stickers']` but the body calls a `packs.put`,
+the underlying IDB tx throws (real IDB behavior). Both real and fake adapters
+preserve this.
+
+## ZIP export / import format
+
+Export ZIP layout:
+
+```
+stickerdb-export-<YYYY-MM-DD>.zip   (date is UTC: new Date(clock.now()).toISOString().slice(0, 10))
+├── manifest.json
+└── stickers/
+    ├── <sticker-id>.gif
+    ├── <sticker-id>.png
+    └── ...                          (extension from DOMAIN.md decision G)
+```
+
+`manifest.json` schema:
+
+```ts
+interface ExportManifest {
+  version: 1;
+  exportedAt: number;                  // clock.now() at export time
+  packs: Array<{
+    id: string;
+    name: string;
+    createdAt: number;
+  }>;
+  stickers: Array<{
+    id: string;
+    name: string;
+    packIds: string[];
+    tags: string[];
+    mimeType: 'image/png' | 'image/gif' | 'image/webp';
+    createdAt: number;
+    lastUsedAt: number;
+    file: string;                      // path inside zip, e.g. "stickers/<id>.gif"
+  }>;
+}
+```
+
+### Import dedup semantics
+
+- For each manifest pack: skip if `existingPackIds.has(entry.id)`, else insert.
+- For each manifest sticker: skip if `existingStickerIds.has(entry.id)`, else
+  insert with `data: files.get(entry.file)`.
+- All packs + stickers inserted in a single readwrite tx.
+- Returns `{ stickersImported, packsImported, stickersSkipped, packsSkipped }`
+  so the engine can flash `imported: N stickers, M packs (K skipped)` where
+  K = stickersSkipped + packsSkipped.
 
 ## Transaction discipline — HARD CONSTRAINT
 
