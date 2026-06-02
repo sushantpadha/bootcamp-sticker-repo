@@ -31,7 +31,7 @@ const DIGIT_TIMEOUT_MS = 1000;
 //   t               open TAGS mode
 //   /               open SEARCH mode
 //   :               open COMMAND mode
-//   u               open UPLOAD mode
+//   a               open UPLOAD mode
 //   ?               open HELP mode
 export class NormalMode implements Mode {
   readonly name = 'NORMAL' as const;
@@ -138,7 +138,7 @@ export class NormalMode implements Mode {
         // Mode transitions
         case '/': engine.transitionTo('SEARCH');  return;
         case ':': engine.transitionTo('COMMAND'); return;
-        case 'u': engine.transitionTo('UPLOAD');  return;
+        case 'a': engine.transitionTo('UPLOAD');  return;
         case '?': engine.transitionTo('HELP');    return;
         case 'r': engine.transitionTo('RENAME');  return;
         case 't': engine.transitionTo('TAGS');    return;

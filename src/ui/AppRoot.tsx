@@ -7,6 +7,7 @@ import { Grid } from './Grid';
 import { Sidebar } from './Sidebar';
 import { Statusline } from './Statusline';
 import { HelpModal } from './overlays/HelpModal';
+import { UploadModal } from './overlays/UploadModal';
 import './theme/themeVars.css';
 
 // ── AppRoot ───────────────────────────────────────────────────────────────────
@@ -96,6 +97,9 @@ export function AppRoot({ engine }: Props) {
 
       {/* Overlay layer — rendered on top when an exclusive mode is active */}
       {engine.getOverlayModel()?.type === 'HELP' && <HelpModal />}
+      {engine.getOverlayModel()?.type === 'UPLOAD' && (
+        <UploadModal snapshot={snapshot} dispatch={dispatch} />
+      )}
     </div>
   );
 }

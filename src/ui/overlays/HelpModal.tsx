@@ -41,7 +41,7 @@ const SECTIONS: Array<{ heading: string; rows: KeyRow[] }> = [
   {
     heading: 'Modes',
     rows: [
-      { keys: 'u',  desc: 'upload' },
+      { keys: 'a',  desc: 'upload' },
       { keys: '/',  desc: 'search' },
       { keys: ':',  desc: 'command' },
       { keys: '?',  desc: 'help' },
