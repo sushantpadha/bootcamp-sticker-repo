@@ -149,3 +149,93 @@ source.
 - Returns a predicate over a single Sticker. Composition with the active
   `SidebarSelection` (logical AND) and the resulting match count are STATE.md's
   derived concerns, not this function's.
+
+## Tab-completion helper (completeToken)
+
+`completeToken(input: string, candidates: string[]): string`
+
+- Pure helper used by COMMAND mode (first-token autocomplete), PACKASSIGN mode
+  (current comma-separated token), and the UploadModal queue row pack input.
+- Identifies the **current token**: if `input` contains commas, the current
+  token is the substring after the last comma (trimmed). Otherwise the whole
+  input.
+- Finds the first `candidate` that case-insensitively `startsWith` the current
+  token and is not equal to it. If no match: returns `input` unchanged.
+- If match: replaces the current token with the candidate (preserving the
+  prefix part before the last comma + ", " separator if present). Returns
+  the new full string.
+- Pure, deterministic, no IDB, no clock.
+
+## FAVOURITE tag
+
+```ts
+const FAVOURITE_TAG = 'favourite';   // src/domain/values/favouriteTag.ts
+```
+
+The `f` keybinding (SPEC §NORMAL Mode → Sticker actions) toggles this literal
+tag on the focused sticker. Match is case-sensitive: `'favourite'` exactly.
+Adding emits flash `tagged: favourite`; removing emits `untagged: favourite`.
+
+## Command details (binding additions to SPEC §Command Palette)
+
+These rules resolve SPEC ambiguities so all command implementations agree:
+
+### `:pack new <name>`
+- If a pack with `name` already exists: error flash `E: pack "<name>" already exists`. Atomicity preserved (no IDB write).
+- Else: insert new Pack `{ id: idGen.uuid(), name, createdAt: clock.now() }` in one tx. Flash `pack "<name>" created`.
+
+### `:pack rename <name>`
+- Requires the active selection to be a `PackSelection`. Else: `E: no pack selected`.
+- If `name` equals the current pack's name: no-op, flash `renamed to "<name>"` (idempotent).
+- If another pack already has `name`: `E: pack "<name>" already exists`.
+- Else: put the pack with the new name; update `state.selection` to a fresh `PackSelection(id, newName)`. Flash `pack renamed to "<name>"`.
+
+### `:pack delete`
+- Requires the active selection to be a `PackSelection`. Else: `E: no pack selected`.
+- Single tx: delete the pack AND strip its id from `packIds` of every sticker
+  that contains it. Flash `pack "<name>" deleted (M stickers updated)`.
+- Active selection falls back to `AllSelection` after delete.
+
+### `:pack move <name>`
+- Applies to the focused sticker. Empty-grid guard: silent no-op when `focusId === null`.
+- If pack with `name` does not exist: create it AND add its id to focused sticker's `packIds` in one tx. Flash `moved to pack "<name>" (created)`.
+- If pack exists and sticker is already a member: no-op, flash `already in pack "<name>"`.
+- Else: add packId to sticker's `packIds` in one tx. Flash `moved to pack "<name>"`.
+
+### `:tag add <tag>` and `:tags add <tag>` (aliases)
+- Empty-grid guard. Adds `tag` to focused sticker's `tags` (dedup). Flash `tagged: <tag>`.
+
+### `:tag remove <tag>` and `:tags remove <tag>` (aliases)
+- Empty-grid guard. Removes `tag`. Flash `untagged: <tag>`.
+
+### `:tag rename <old> <new>` and `:tags rename <old> <new>` (aliases)
+- Global rename across ALL stickers. Single tx: load all stickers, for each
+  with `tags.includes(old)`, replace with `new` (dedup the resulting array
+  in case `new` was already present). Put all affected stickers in one tx.
+- If `old === new`: no-op, flash `renamed tag "<old>" → "<new>" (0 stickers)`.
+- Case-sensitive exact match.
+- Flash `renamed tag "<old>" → "<new>" (N stickers)`.
+
+### `:tag clear` and `:tags clear` (extension — not in SPEC, kept as power-user shortcut)
+- Empty-grid guard. Clears all tags on focused sticker. No flash.
+
+### `:sort recent | added | name`
+- Sets `state.sort`. Flash `sort: <id>`.
+
+### `:theme dark | light | toggle`
+- `dark`/`light`: set theme literal. `toggle`: flip current. Persist via KeyValueStore.
+- Flash `theme: <dark|light>` (whichever was applied).
+
+### `:help`
+- `engine.transitionTo('HELP')`. No flash.
+
+### `:export`
+- Reads all stickers + packs via `db.tx(['stickers','packs'], 'readonly', ...)`.
+- Builds manifest per IDB.md ZIP format; zips; triggers download with filename
+  `stickerdb-export-${YYYY-MM-DD}.zip` (UTC).
+- Flashes `exporting...` on dispatch; `done: N stickers` after async resolves.
+
+### `:import`
+- Opens file picker via FilePickerPort.pickZip(). If user cancels: no flash.
+- Calls ImportService.importZip per IDB.md import dedup semantics.
+- Flashes `imported: N stickers, M packs (K skipped)` on success.

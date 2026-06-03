@@ -43,8 +43,10 @@ src/
       registry.ts           # trie resolver + E492
       packCommands.ts tagCommands.ts sortCommands.ts ioCommands.ts themeCommands.ts helpCommand.ts
     upload/
-      stickerCandidate.ts   # interface
-      fileCandidate.ts clipboardCandidate.ts uploadQueue.ts
+      stickerCandidate.ts   # interface (moved from domain/values)
+      fileCandidate.ts      # FileStickerCandidate (from <input> / drag-drop)
+      clipboardCandidate.ts # ClipboardStickerCandidate (from Ctrl+V paste)
+      uploadQueue.ts        # QueuedSticker type (moved from engine/appState)
     services/
       yankService.ts        # ClipboardPort write + download fallback; updates lastUsedAt
       packService.ts        # create/rename/delete/move w/ collision + single-tx writes
@@ -52,25 +54,31 @@ src/
     ports/
       database.ts stickerRepository.ts packRepository.ts
       clipboardPort.ts filePickerPort.ts zipCodecPort.ts
-      keyValueStore.ts clock.ts idGenerator.ts
+      keyValueStore.ts clock.ts idGenerator.ts timer.ts
 
   infra/
     idb/ idbDatabase.ts idbStickerRepository.ts idbPackRepository.ts schema.ts
     clipboard/ navigatorClipboard.ts
-    files/ domFilePicker.ts
+    files/ domFilePicker.ts domDownloader.ts (closure in composition.ts)
     zip/ jsZipCodec.ts
     kv/ localStorageKeyValueStore.ts
-    system/ systemClock.ts cryptoIdGenerator.ts
+    system/ systemClock.ts cryptoIdGenerator.ts systemTimer.ts
 
   ui/
     AppRoot.tsx             # mounts engine; useSyncExternalStore
     useEngine.ts            # hook -> { snapshot, dispatch }
-    KeyboardCapture.tsx     # document keydown; preventDefault in NORMAL
+    useObjectURLs.ts        # Sticker[] → object URL cache (effect-driven)
+    KeyboardCapture.tsx     # document keydown; preventDefault in NORMAL only
     Sidebar.tsx PackRow.tsx
     Grid.tsx StickerCell.tsx
     Statusline.tsx          # renders StatuslineModel from active mode
     overlays/ UploadModal.tsx HelpModal.tsx
-    theme/ themeVars.css    # .theme-dark / .theme-light CSS custom properties
+    theme/
+      themeVars.css         # .theme-dark / .theme-light CSS custom properties
+      styles.ts             # shared inline-style objects (input, cell, modal,
+                            #   layout) — single source of truth for repeated
+                            #   styling fragments. Component files import
+                            #   constants from here rather than inlining.
 
   bootstrap/
     composition.ts          # the ONLY place infra is instantiated + injected
@@ -144,7 +152,7 @@ wherever you touch the relevant layer.
 |---|---|---|
 | `domain/**` | other `domain/**` only | `app`, `infra`, `ui`, any browser global |
 | `app/ports/**` | `domain/**` (entity types) | `infra`, `app/engine`, `app/modes`, `ui` |
-| `app/{engine,modes,commands,services,upload}/**` | `domain/**`, `app/ports/**` | `infra/**`, `ui/**`, browser globals |
+| `app/{engine,modes,commands,services,upload}/**` | `domain/**`, `app/ports/**`, sibling `app/**` modules (engine/commands/services/upload/modes) | `infra/**`, `ui/**`, browser globals, `Date.now()`, `setTimeout`/`clearTimeout` (use `Clock` and `Timer` ports instead) |
 | `infra/**` | `domain/**`, `app/ports/**` | `app/{engine,modes,commands,services}`, `ui` |
 | `ui/**` | `app` engine surface + `domain/**` types for rendering | `infra/**` directly |
 | `bootstrap/composition.ts` | everything (it is the wiring) | — |
@@ -166,3 +174,72 @@ enforcement mechanism for LSP macro-decision #1: because the engine depends only
 port interfaces, substituting the real infra for `test/fakes/**` is a one-line change
 at the root. Any module that reaches for a global bypasses the seam and silently
 voids the substitution guarantee — so it is prohibited.
+
+The `composition.ts` adapter constructions are grouped so the one-line-swap claim
+holds in practice: a single `const useFakes = false` (or per-port equivalent) flips
+each adapter to its fake, no other file changes required.
+
+## Visual constants (SPEC-derived; binding)
+
+These constants are referenced by `ui/theme/themeVars.css` and `ui/theme/styles.ts`.
+They are derived from SPEC.md and must not be drifted from without a SPEC change.
+
+| Constant | Value | Used in |
+|---|---|---|
+| Sidebar width | 180 px | AppRoot layout |
+| Statusline height | 28 px | AppRoot layout |
+| Sticker cell size | 96 × 96 px | StickerCell, Grid template |
+| Sticker thumbnail (upload modal) | 48 × 48 px | UploadModal QueueRow |
+| Sticker hover scale | 1.15 | StickerCell |
+| Hover z-index | 10 | StickerCell |
+| Sticker name truncation | 12 chars + `..` | StickerCell |
+| Pack name truncation | 14 chars + `..` | PackRow |
+| Sidebar active marker | `> ` (2 chars) | PackRow |
+| Sidebar inactive marker | `  ` (2 spaces) | PackRow (alignment) |
+| Pack count format | `[<n>]` | Sidebar header, PackRow |
+| Flash duration | 2000 ms | engine FlashScheduler |
+| `gg` window | 500 ms | NormalMode |
+| `[n]p` digit buffer | 1000 ms | NormalMode |
+| Drop zone | dashed border, centered `DROP STICKERS HERE` | UploadModal |
+| Border | 1 px solid | global (themeVars.css) |
+| Border radius | 0 | global (themeVars.css) |
+| Font family | JetBrains Mono | global (themeVars.css) |
+
+## CSS variables (binding)
+
+Defined in `ui/theme/themeVars.css`. The SPEC-mandated nine plus one overlay
+helper:
+
+| Var | Dark | Light | Used for |
+|---|---|---|---|
+| `--bg` | `#0a0a0a` | `#ffffff` | window background |
+| `--bg-subtle` | `#0d1a0d` | `#f6f8fa` | sidebar, statusline, modal panel |
+| `--border` | `#003300` | `#d0d7de` | every visible border |
+| `--border-focus` | `#00ff00` | `#0969da` | focused cell, drop zone over |
+| `--text` | `#00ff00` | `#24292f` | primary text, mode label |
+| `--text-dim` | `#005500` | `#57606a` | secondary text, hints, counts |
+| `--text-error` | `#ff0000` | `#cf222e` | flash error text |
+| `--highlight-bg` | `#0d1a0d` | `#ddf4ff` | focused sticker background |
+| `--highlight-border` | `#00ff00` | `#0969da` | focused sticker border |
+| `--overlay-bg` (extension) | `rgba(0,0,0,0.7)` | `rgba(255,255,255,0.7)` | modal backdrop |
+
+No other CSS custom properties are permitted. No Tailwind hardcoded colors.
+All component styles read from these vars via `var(--*)`.
+
+## Shared style patterns (ui/theme/styles.ts)
+
+To keep styling easily changeable: every repeated inline-style fragment lives
+as a named constant in `ui/theme/styles.ts`. Components import the constant
+rather than re-declaring the object. Examples:
+
+- `INPUT_STYLE` — statusline input, queue row inputs
+- `CELL_STYLE` — base 96×96 cell
+- `CELL_FOCUSED_STYLE`, `CELL_HOVER_STYLE` — additive variants
+- `MODAL_BACKDROP_STYLE`, `MODAL_PANEL_STYLE` — both overlays
+- `SIDEBAR_ROW_STYLE`, `SIDEBAR_ROW_ACTIVE_STYLE`
+- `STATUSLINE_CONTAINER_STYLE`, `STATUSLINE_LABEL_STYLE`
+- `DROP_ZONE_STYLE`, `DROP_ZONE_OVER_STYLE`
+- `TOOLTIP_STYLE`
+
+Changing a visual aspect = one edit in `styles.ts`. Changing a color = one
+edit in `themeVars.css`. Components stay free of hard-coded styling.

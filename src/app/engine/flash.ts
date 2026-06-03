@@ -1,23 +1,28 @@
-// Manages the single 2-second flash timer (STATE.md §Flash scheduling).
-// Setting a new flash replaces any current one and resets the timer.
-// Flash is orthogonal to mode transitions — the scheduler has no awareness of modes.
-export class FlashScheduler {
-  private timerId: ReturnType<typeof setTimeout> | null = null;
+import type { Timer, TimerHandle } from '../ports/timer';
 
-  // Schedule onClear to fire after `ms` milliseconds.
-  // Cancels any previously pending timer before scheduling the new one.
+// Single 2-second flash timer (STATE.md §Flash scheduling).
+// Setting a new flash replaces any current one and resets the timer.
+// Timer-driven (NOT raw setTimeout) so tests can advance deterministically.
+export class FlashScheduler {
+  private handle: TimerHandle | null = null;
+  private readonly timer: Timer;
+
+  constructor(timer: Timer) {
+    this.timer = timer;
+  }
+
   schedule(ms: number, onClear: () => void): void {
-    if (this.timerId !== null) clearTimeout(this.timerId);
-    this.timerId = setTimeout(() => {
-      this.timerId = null;
+    if (this.handle !== null) this.timer.clearTimeout(this.handle);
+    this.handle = this.timer.setTimeout(() => {
+      this.handle = null;
       onClear();
     }, ms);
   }
 
   cancel(): void {
-    if (this.timerId !== null) {
-      clearTimeout(this.timerId);
-      this.timerId = null;
+    if (this.handle !== null) {
+      this.timer.clearTimeout(this.handle);
+      this.handle = null;
     }
   }
 }

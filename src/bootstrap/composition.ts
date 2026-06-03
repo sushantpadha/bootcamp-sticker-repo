@@ -1,59 +1,63 @@
-// ── Composition root (ARCHITECTURE.md §Composition root contract) ────────────
+// ── Composition root (ARCHITECTURE.md §Composition root contract) ───────────
 //
-// This is the ONLY module that constructs infra adapters or reads browser
-// globals (indexedDB, navigator, localStorage, crypto). Swapping real infra
-// for M3 fakes is a one-line change per adapter below.
+// The ONLY module that constructs infra adapters or reads browser globals.
+// Swapping in fakes for any port is a one-line change at the corresponding
+// `const x = useFakes ? new Fake* : new Idb*` (or per-port equivalent).
+
+import type { Database } from '../app/ports/database';
+import type { StickerRepository, PackRepository } from '../app/ports/database';
+import type { ClipboardPort } from '../app/ports/clipboardPort';
+import type { FilePickerPort } from '../app/ports/filePickerPort';
+import type { ZipCodecPort } from '../app/ports/zipCodecPort';
+import type { KeyValueStore } from '../app/ports/keyValueStore';
+import type { Clock } from '../app/ports/clock';
+import type { IdGenerator } from '../app/ports/idGenerator';
+import type { Timer } from '../app/ports/timer';
 
 import { IdbDatabase } from '../infra/idb/idbDatabase';
 import { IdbStickerRepository } from '../infra/idb/idbStickerRepository';
 import { IdbPackRepository } from '../infra/idb/idbPackRepository';
 import { NavigatorClipboard } from '../infra/clipboard/navigatorClipboard';
+import { DomFilePicker } from '../infra/files/domFilePicker';
 import { JsZipCodec } from '../infra/zip/jsZipCodec';
 import { LocalStorageKeyValueStore } from '../infra/kv/localStorageKeyValueStore';
 import { SystemClock } from '../infra/system/systemClock';
 import { CryptoIdGenerator } from '../infra/system/cryptoIdGenerator';
+import { SystemTimer } from '../infra/system/systemTimer';
+
 import { EngineImpl } from '../app/engine/engine';
 
-// Download fallback: triggered by YankService when navigator.clipboard.write
-// is unavailable (non-HTTPS or denied permission).
-function downloadFallback(blob: Blob, name: string): void {
+// ── Download helper (yank fallback + :export trigger) ─────────────────────
+// Uses object-URL + <a download> + click + revoke. Defers revoke so the
+// browser's download manager can fetch the blob URL.
+function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = name;
+  a.download = filename;
   a.click();
-  // Defer revocation so the browser's download manager can fetch the blob URL
-  // before it is invalidated (synchronous revoke races the async fetch).
   setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
-// ── Adapter instantiation ─────────────────────────────────────────────────────
-// To swap for fakes (e.g. for testing or M10 substitutability check), replace
-// each `new Idb*` / `new Navigator*` with the corresponding `new Fake*`.
-
-const db        = new IdbDatabase();
-const stickers  = new IdbStickerRepository();
-const packs     = new IdbPackRepository();
-const kv        = new LocalStorageKeyValueStore();
-const clipboard = new NavigatorClipboard();
-const zip       = new JsZipCodec();
-const idGen     = new CryptoIdGenerator();
-const clock     = new SystemClock();
+// ── Adapter wiring ────────────────────────────────────────────────────────
+// To swap a port for its fake, flip ONE line.
+const db:          Database          = new IdbDatabase();
+const stickers:    StickerRepository = new IdbStickerRepository();
+const packs:       PackRepository    = new IdbPackRepository();
+const kv:          KeyValueStore     = new LocalStorageKeyValueStore();
+const clipboard:   ClipboardPort     = new NavigatorClipboard();
+const zip:         ZipCodecPort      = new JsZipCodec();
+const filePicker:  FilePickerPort    = new DomFilePicker();
+const idGen:       IdGenerator       = new CryptoIdGenerator();
+const clock:       Clock             = new SystemClock();
+const timer:       Timer             = new SystemTimer();
 
 export const engine = new EngineImpl({
-  kv,
-  db,
-  stickers,
-  packs,
-  clipboard,
-  idGen,
-  clock,
-  zip,
-  onDownloadFallback: downloadFallback,
+  kv, timer, db, stickers, packs, clipboard, idGen, clock, zip, filePicker,
+  downloadBlob,
 });
 
-// Opens the IDB, reads all persisted data, and dispatches loadAll so the UI
-// populates from the stored state. Called once from main.tsx at startup.
+// Read persisted state and dispatch loadAll.
 export async function initAsync(): Promise<void> {
   await db.init();
   const { s, p } = await db.tx(['stickers', 'packs'], 'readonly', scope => ({

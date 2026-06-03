@@ -2,20 +2,16 @@ import type { Sticker } from '../../domain/entities/sticker';
 import type { Pack } from '../../domain/entities/pack';
 import type { SidebarSelection } from '../../domain/selection/sidebarSelection';
 import type { StickerSort } from '../../domain/sort/stickerSort';
-import type { StickerCandidate } from '../../domain/values/stickerCandidate';
 import type { ModeName } from '../../domain/values/modeName';
+import type { QueuedSticker } from '../upload/uploadQueue';
 import { buildSearchPredicate } from '../../domain/search/searchPredicate';
+
+// Re-export QueuedSticker so callers don't need to know its physical path.
+export type { QueuedSticker } from '../upload/uploadQueue';
 
 export interface Flash {
   text: string;
   isError: boolean;
-}
-
-export interface QueuedSticker {
-  candidate: StickerCandidate;
-  name: string;      // prefilled from candidate.defaultName
-  tags: string[];
-  packNames: string[]; // resolved to packIds on save
 }
 
 export interface AppState {
@@ -30,6 +26,9 @@ export interface AppState {
 
   // focus by identity (decision E)
   focusId: string | null;
+
+  // viewport feedback from UI (for 2-D nav)
+  gridCols: number;            // published by ui/Grid via ResizeObserver; default 1
 
   // mode / input
   modeName: ModeName;

@@ -58,11 +58,17 @@ in any conforming Mode is correct by construction.
 
 Exactly one mode is active at all times. `engine.transitionTo(next)` is the only way
 to change it and runs atomically: `current.onExit(engine)` → set `modeName` →
-`next.onEnter(engine)`. `UPLOAD` and `HELP` are **exclusive modes**, not overlays on
+`next.onEnter(engine)`. The three steps run with subscriber notifications batched
+so React observers see exactly one snapshot after the transition (not three
+intermediates).
+
+`UPLOAD` and `HELP` are **exclusive modes**, not overlays on
 NORMAL; their modal UI is merely their `overlay()` output. Because `handleKey` routes
 only to the active mode, underlying NORMAL keybindings are inert while UPLOAD/HELP are
 active. In NORMAL, `handleKey` calls `preventDefault()` on every non-modifier key so
-no browser shortcut fires.
+no browser shortcut fires. **In every other mode**, `preventDefault()` is called
+only for `Enter`, `Tab`, and `Escape` — so browser shortcuts (Ctrl+R, F12, etc.)
+remain usable while typing in input modes.
 
 ## Decision I — engine-owned input buffer
 
@@ -77,8 +83,53 @@ DOM inputs bound to `uploadQueue` rows.
 
 NormalMode's `gg` detection, the `[n]p` digit accumulator, and any key-sequence
 buffer are **internal to NormalMode**, time-bounded (gg within 500ms; digit buffer
-clears after 1s), and reset in `onExit`. They are not part of the Mode contract and
-not part of AppState (STATE.md).
+clears after 1s) via the `Timer` port (NOT raw `setTimeout`), and reset in `onExit`.
+They are not part of the Mode contract and not part of AppState (STATE.md).
+
+NO other mode is permitted to hold mode-internal state beyond what the per-mode
+enter/exit table below sanctions. In particular, SearchMode does NOT remember
+its pre-enter search value — Esc clears `state.search` to `""` per SPEC.
+ConfirmMode's `pending` action ref is sanctioned by the per-mode table.
+
+## NormalMode keybindings (binding; SPEC-mirror with aliases)
+
+| Key | Action |
+|---|---|
+| `h` / `←` | move focus left |
+| `l` / `→` | move focus right |
+| `j` / `↓` | move focus down one row (uses `state.gridCols`) |
+| `k` / `↑` | move focus up one row (uses `state.gridCols`) |
+| `gg` (within 500ms) | jump to first sticker |
+| `G` | jump to last sticker |
+| `0` | first sticker in current row |
+| `$` | last sticker in current row |
+| `p` | next pack (cycle: All → packs → Ungrouped → All) |
+| `P` | previous pack |
+| `[n]p` | jump to nth pack (1-indexed; index 1 = first user pack; digit buffer clears after 1s; out-of-range clamps to last) |
+| `Tab` / `Ctrl+N` | alias for `p` |
+| `Shift+Tab` / `Ctrl+P` | alias for `P` |
+| `Enter` / `yy` | yank focused sticker |
+| `y` (single) | alias for `yy` (immediate yank) |
+| `f` | toggle `favourite` tag on focused sticker |
+| `a` | enter UPLOAD mode |
+| `d` | enter CONFIRM (delete focused) |
+| `r` | enter RENAME (focused) |
+| `t` | enter TAGS (focused) |
+| `m` | enter PACKASSIGN (focused) |
+| `/` | enter SEARCH |
+| `n` | next search match (wraps; no-op if `state.search === ""`) |
+| `N` | previous search match (wraps; no-op if `state.search === ""`) |
+| `:` | enter COMMAND |
+| `?` | enter HELP |
+| `Ctrl+T` | toggle theme |
+
+**Edge cases the keybinding layer must honor:**
+- Row-edge wrap: `h` at col 0 wraps to last col of previous row; `l` at last
+  col wraps to first col of next row. (Vertical edges clamp normally.)
+- Empty-grid silent no-op: when `state.focusId === null`, keys `d`, `r`, `t`,
+  `m`, `f`, `y`, `yy`, `Enter` are no-ops (no flash, no transition).
+- `0` alone is the row-start jump (not the digit accumulator); a leading `0`
+  with no prior non-zero digit must be treated as the row-start command.
 
 ## Per-mode enter/exit behavior
 

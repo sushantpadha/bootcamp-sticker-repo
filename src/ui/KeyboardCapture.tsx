@@ -14,23 +14,30 @@ const MODIFIER_KEYS = new Set([
   'Fn', 'FnLock', 'Hyper', 'Super', 'Symbol', 'SymbolLock',
 ]);
 
-// Renders nothing; installs a document-level keydown listener.
-// Normalizes DOM events to the KeyEvent contract (MODES.md) and routes them
-// to engine.handleKey.  In NORMAL mode every non-modifier key gets
-// preventDefault() before routing so browser shortcuts don't fire.
+// Document-level keydown listener. Normalizes DOM events to the KeyEvent
+// shape (MODES.md) and routes to the engine. preventDefault is the mode's
+// responsibility — KeyboardCapture only handles the NORMAL belt-and-braces
+// suppression to prevent browser shortcuts (Ctrl+R etc.) firing before the
+// mode handler runs.
 export function KeyboardCapture({ engine, snapshot }: Props): null {
-  // Keep a ref to the latest snapshot so the single event listener always
-  // reads the current mode without being re-registered on every render.
   const snapshotRef = useRef(snapshot);
   useLayoutEffect(() => { snapshotRef.current = snapshot; });
 
   useEffect(() => {
     function onKeyDown(domEvt: KeyboardEvent): void {
+      // Skip if focus is inside a DOM input (upload modal queue rows). The
+      // input handles its own key events; we don't route through the engine.
+      const target = domEvt.target;
+      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
       const { modeName } = snapshotRef.current;
       const isModifier = MODIFIER_KEYS.has(domEvt.key);
 
-      // MODES.md Decision B: in NORMAL mode, prevent every non-modifier key
-      // so no browser shortcut fires.
+      // Decision B: NORMAL preventDefault on every non-modifier key so browser
+      // shortcuts don't fire. Other modes preventDefault only on Enter/Tab/Esc
+      // (those modes call preventDefault themselves in their handleKey).
       if (modeName === 'NORMAL' && !isModifier) {
         domEvt.preventDefault();
       }

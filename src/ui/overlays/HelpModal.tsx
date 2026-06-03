@@ -1,159 +1,140 @@
-// ── HelpModal ─────────────────────────────────────────────────────────────────
-//
-// Read-only help overlay rendered only when HELP mode is active (M16).
-//
-// IMPORTANT: this component does NOT handle q/Esc. Closing the modal is driven
-// entirely by HelpMode.handleKey (MODES.md §Decision B): the engine routes
-// those keys there, which calls engine.transitionTo('NORMAL'), which causes
-// AppRoot to stop rendering this overlay.
+import {
+  MODAL_BACKDROP_STYLE, MODAL_PANEL_STYLE, MODAL_HEADER_STYLE, MODAL_BODY_STYLE,
+  HELP_TWO_COL_STYLE, HELP_SECTION_HEADING_STYLE,
+  HELP_KEY_CELL_STYLE, HELP_DESC_CELL_STYLE,
+} from '../theme/styles';
 
-interface KeyRow {
-  keys: string;
-  desc: string;
-}
+// Read-only help overlay (HELP mode's overlay() output).
+// SPEC §Help Modal: two-column layout — NORMAL keys left, command palette right.
+// Closing is HelpMode.handleKey's responsibility (q/Esc).
 
-const SECTIONS: Array<{ heading: string; rows: KeyRow[] }> = [
+interface Row { keys: string; desc: string; }
+interface Section { heading: string; rows: Row[]; }
+
+const NORMAL_SECTIONS: Section[] = [
   {
-    heading: 'Navigation',
+    heading: 'Grid navigation',
     rows: [
-      { keys: 'h / ←',          desc: 'move left' },
-      { keys: 'l / →',          desc: 'move right' },
-      { keys: 'k / ↑',          desc: 'move up' },
-      { keys: 'j / ↓',          desc: 'move down' },
-      { keys: 'gg',             desc: 'move to first' },
-      { keys: 'G',              desc: 'move to last' },
-      { keys: 'Tab / Ctrl-n',   desc: 'next pack' },
-      { keys: 'Shift-Tab / Ctrl-p', desc: 'prev pack' },
-      { keys: '[n]p',           desc: 'cycle pack n steps' },
+      { keys: 'h / ←',          desc: 'left' },
+      { keys: 'j / ↓',          desc: 'down' },
+      { keys: 'k / ↑',          desc: 'up' },
+      { keys: 'l / →',          desc: 'right' },
+      { keys: 'gg',             desc: 'first sticker' },
+      { keys: 'G',              desc: 'last sticker' },
+      { keys: '0',              desc: 'first in row' },
+      { keys: '$',              desc: 'last in row' },
     ],
   },
   {
-    heading: 'Actions',
+    heading: 'Pack navigation',
     rows: [
-      { keys: 'y',  desc: 'yank (copy)' },
-      { keys: 'f',  desc: 'toggle favourite' },
-      { keys: 'd',  desc: 'delete (confirm)' },
-      { keys: 'r',  desc: 'rename' },
-      { keys: 't',  desc: 'edit tags' },
-      { keys: 'p',  desc: 'assign packs' },
+      { keys: 'p / Tab',                 desc: 'next pack' },
+      { keys: 'P / Shift+Tab',           desc: 'previous pack' },
+      { keys: '[n]p',                    desc: 'jump to nth pack' },
+      { keys: 'Ctrl+N / Ctrl+P',         desc: 'next / prev pack (alias)' },
     ],
   },
   {
-    heading: 'Modes',
+    heading: 'Sticker actions',
     rows: [
-      { keys: 'a',  desc: 'upload' },
-      { keys: '/',  desc: 'search' },
-      { keys: ':',  desc: 'command' },
-      { keys: '?',  desc: 'help' },
+      { keys: 'yy / Enter / y',  desc: 'yank (copy)' },
+      { keys: 'a',               desc: 'upload modal' },
+      { keys: 'd',               desc: 'delete (confirm)' },
+      { keys: 'r',               desc: 'rename' },
+      { keys: 't',               desc: 'edit tags' },
+      { keys: 'm',               desc: 'assign packs' },
+      { keys: 'f',               desc: 'toggle favourite' },
     ],
   },
   {
-    heading: 'Close',
+    heading: 'Search & misc',
     rows: [
-      { keys: 'q / Esc', desc: 'close help' },
+      { keys: '/',               desc: 'search' },
+      { keys: 'n / N',           desc: 'next / prev match' },
+      { keys: ':',               desc: 'command palette' },
+      { keys: '?',               desc: 'this help' },
+      { keys: 'Ctrl+T',          desc: 'toggle theme' },
     ],
   },
 ];
 
+const COMMAND_SECTIONS: Section[] = [
+  {
+    heading: 'Packs',
+    rows: [
+      { keys: ':pack new <name>',     desc: 'create pack' },
+      { keys: ':pack rename <name>',  desc: 'rename current pack' },
+      { keys: ':pack delete',         desc: 'delete current pack' },
+      { keys: ':pack move <name>',    desc: 'add focused to named pack' },
+    ],
+  },
+  {
+    heading: 'Tags',
+    rows: [
+      { keys: ':tag add <tag>',           desc: 'add tag to focused' },
+      { keys: ':tag remove <tag>',        desc: 'remove tag from focused' },
+      { keys: ':tag rename <old> <new>',  desc: 'rename tag globally' },
+      { keys: ':tag clear',               desc: 'clear all tags on focused' },
+    ],
+  },
+  {
+    heading: 'Sort',
+    rows: [
+      { keys: ':sort recent',  desc: 'by last used (default)' },
+      { keys: ':sort added',   desc: 'by created' },
+      { keys: ':sort name',    desc: 'by name' },
+    ],
+  },
+  {
+    heading: 'Import / Export',
+    rows: [
+      { keys: ':export',  desc: 'download full DB as zip' },
+      { keys: ':import',  desc: 'pick a zip and merge' },
+    ],
+  },
+  {
+    heading: 'Theme & help',
+    rows: [
+      { keys: ':theme toggle',  desc: 'flip theme' },
+      { keys: ':theme dark',    desc: 'force dark' },
+      { keys: ':theme light',   desc: 'force light' },
+      { keys: ':help',          desc: 'this help' },
+    ],
+  },
+];
+
+function SectionView({ section }: { section: Section }) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={HELP_SECTION_HEADING_STYLE}>{section.heading}</div>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <tbody>
+          {section.rows.map(row => (
+            <tr key={row.keys}>
+              <td style={HELP_KEY_CELL_STYLE}>{row.keys}</td>
+              <td style={HELP_DESC_CELL_STYLE}>{row.desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function HelpModal() {
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'var(--bg-overlay)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100,
-      }}
-    >
-      <div
-        style={{
-          background: 'var(--bg-overlay-panel)',
-          border: '1px solid var(--border)',
-          width: 480,
-          maxWidth: '90vw',
-          maxHeight: '80vh',
-          overflowY: 'auto',
-          padding: '16px 20px',
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            color: 'var(--mode-help)',
-            fontWeight: 600,
-            marginBottom: 12,
-            fontSize: '0.9em',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-          }}
-        >
-          HELP — key bindings
-        </div>
-
-        {/* Two-column sections */}
-        {SECTIONS.map(section => (
-          <div key={section.heading} style={{ marginBottom: 12 }}>
-            <div
-              style={{
-                color: 'var(--text-dim)',
-                fontSize: '0.8em',
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                marginBottom: 4,
-                borderBottom: '1px solid var(--border)',
-                paddingBottom: 2,
-              }}
-            >
-              {section.heading}
+    <div style={MODAL_BACKDROP_STYLE}>
+      <div style={{ ...MODAL_PANEL_STYLE, width: 720, maxWidth: '95%' }}>
+        <div style={MODAL_HEADER_STYLE}>HELP — keybindings & commands</div>
+        <div style={MODAL_BODY_STYLE}>
+          <div style={HELP_TWO_COL_STYLE}>
+            <div>
+              {NORMAL_SECTIONS.map(s => <SectionView key={s.heading} section={s} />)}
             </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <tbody>
-                {section.rows.map(row => (
-                  <tr key={row.keys}>
-                    <td
-                      style={{
-                        width: '45%',
-                        paddingRight: 12,
-                        paddingTop: 2,
-                        paddingBottom: 2,
-                        color: 'var(--accent)',
-                        whiteSpace: 'nowrap',
-                        verticalAlign: 'top',
-                      }}
-                    >
-                      {row.keys}
-                    </td>
-                    <td
-                      style={{
-                        color: 'var(--text)',
-                        paddingTop: 2,
-                        paddingBottom: 2,
-                        verticalAlign: 'top',
-                      }}
-                    >
-                      {row.desc}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <div>
+              {COMMAND_SECTIONS.map(s => <SectionView key={s.heading} section={s} />)}
+            </div>
           </div>
-        ))}
-
-        {/* Footer hint */}
-        <div
-          style={{
-            color: 'var(--text-dim)',
-            fontSize: '0.8em',
-            marginTop: 8,
-            borderTop: '1px solid var(--border)',
-            paddingTop: 6,
-          }}
-        >
-          q / Esc to close
         </div>
       </div>
     </div>

@@ -5,24 +5,38 @@ import { asIdbTxScope } from './idbDatabase';
 
 export class IdbPackRepository implements PackRepository {
   getAll(scope: TxScope): Pack[] {
-    return [...asIdbTxScope(scope).view.packs.values()];
+    const s = asIdbTxScope(scope);
+    if (!s.allowedStores.has('packs')) {
+      throw new Error('packs store not in this tx scope');
+    }
+    return [...s.getPacksView().values()];
   }
 
   get(scope: TxScope, id: string): Pack | undefined {
-    return asIdbTxScope(scope).view.packs.get(id);
+    const s = asIdbTxScope(scope);
+    if (!s.allowedStores.has('packs')) {
+      throw new Error('packs store not in this tx scope');
+    }
+    return s.getPacksView().get(id);
   }
 
   put(scope: TxScope, entity: Pack): void {
     const s = asIdbTxScope(scope);
+    if (!s.allowedStores.has('packs')) {
+      throw new Error('packs store not in this tx scope');
+    }
     if (s.mode !== 'readwrite') throw new Error('Cannot write in a readonly transaction');
-    s.view.packs.set(entity.id, entity);
-    s.idbTx!.objectStore('packs').put(entity).onerror = () => {};
+    s.getPacksView().set(entity.id, entity);
+    s.idbTx.objectStore('packs').put(entity);
   }
 
   delete(scope: TxScope, id: string): void {
     const s = asIdbTxScope(scope);
+    if (!s.allowedStores.has('packs')) {
+      throw new Error('packs store not in this tx scope');
+    }
     if (s.mode !== 'readwrite') throw new Error('Cannot write in a readonly transaction');
-    s.view.packs.delete(id);
-    s.idbTx!.objectStore('packs').delete(id).onerror = () => {};
+    s.getPacksView().delete(id);
+    s.idbTx.objectStore('packs').delete(id);
   }
 }

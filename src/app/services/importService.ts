@@ -1,181 +1,151 @@
 import type { Sticker } from '../../domain/entities/sticker';
 import type { Pack } from '../../domain/entities/pack';
 import type { Database, StickerRepository, PackRepository } from '../ports/database';
+import type { ZipCodecPort } from '../ports/zipCodecPort';
 import type { IdGenerator } from '../ports/idGenerator';
 import type { Clock } from '../ports/clock';
-import type { ZipCodecPort } from '../ports/zipCodecPort';
-import type { QueuedSticker } from '../engine/appState';
+import type { QueuedSticker } from '../upload/uploadQueue';
+import { createSticker } from '../../domain/entities/sticker';
+import { createPack } from '../../domain/entities/pack';
 import { resolveNameCollision } from '../../domain/naming/resolveNameCollision';
+
+export interface ImportResult {
+  stickersImported: number;
+  packsImported: number;
+  stickersSkipped: number;
+  packsSkipped: number;
+}
 
 export class ImportService {
   private readonly db: Database;
   private readonly stickers: StickerRepository;
   private readonly packs: PackRepository;
-  private readonly idGen: IdGenerator;
-  private readonly clock: Clock;
   private readonly zip: ZipCodecPort;
 
   constructor(
     db: Database,
     stickers: StickerRepository,
     packs: PackRepository,
-    idGen: IdGenerator,
-    clock: Clock,
     zip: ZipCodecPort,
   ) {
     this.db = db;
     this.stickers = stickers;
     this.packs = packs;
-    this.idGen = idGen;
-    this.clock = clock;
     this.zip = zip;
   }
 
-  // Saves the upload queue to IDB.
-  //
-  // Transaction discipline (IDB.md hard constraint):
-  //   Step 1 — resolve all bytes OUTSIDE the tx (foreign async).
-  //   Step 2 — compute IDs, resolve pack names, run collision logic.
-  //   Step 3 — ONE tx over ['stickers', 'packs'] for every write.
+  // UPLOAD modal save path: takes the in-memory queue and the current snapshot,
+  // resolves all bytes outside any tx, then writes everything in one tx.
   async saveUpload(
     queue: QueuedSticker[],
     allStickers: Sticker[],
     allPacks: Pack[],
+    idGen: IdGenerator,
+    clock: Clock,
   ): Promise<{ stickers: Sticker[]; newPacks: Pack[] }> {
     if (queue.length === 0) return { stickers: [], newPacks: [] };
 
-    // Step 1: resolve all bytes outside tx.
+    // Step 1: resolve all bytes outside tx (IDB.md hard constraint).
     const buffers = await Promise.all(queue.map(row => row.candidate.resolveBytes()));
 
-    // Step 2: resolve pack names → IDs, build new Pack objects for unknown names.
-    const { packMap, newPacks } = resolvePacks(
-      queue.flatMap(row => row.packNames),
-      allPacks,
-      this.idGen,
-      this.clock,
-    );
+    // Step 2: resolve pack names → packs; collect new packs to create.
+    const packMap = new Map<string, string>();   // name -> id
+    const newPacks: Pack[] = [];
+    for (const row of queue) {
+      for (const name of row.packNames) {
+        if (packMap.has(name)) continue;
+        const existing = allPacks.find(p => p.name === name);
+        if (existing) {
+          packMap.set(name, existing.id);
+        } else if (newPacks.find(p => p.name === name)) {
+          packMap.set(name, newPacks.find(p => p.name === name)!.id);
+        } else {
+          const np = createPack({ id: idGen.uuid(), name, createdAt: clock.now() });
+          newPacks.push(np);
+          packMap.set(name, np.id);
+        }
+      }
+    }
 
-    // Build sticker entities — collision resolution runs against all existing
-    // stickers plus stickers already built in this batch.
-    const now = this.clock.now();
-    const builtStickers: Sticker[] = [];
+    // Step 3: build sticker entities with collision-resolved names. Collision
+    // checks against existing + already-built-in-this-batch stickers.
+    const now = clock.now();
+    const built: Sticker[] = [];
     for (let i = 0; i < queue.length; i++) {
       const row = queue[i];
       const packIds = row.packNames.map(n => packMap.get(n)!);
-      const combinedExisting = [...allStickers, ...builtStickers];
-      const resolvedName = resolveNameCollision(row.name, packIds, combinedExisting);
-      builtStickers.push({
-        id: this.idGen.uuid(),
+      const combined = [...allStickers, ...built];
+      const resolvedName = resolveNameCollision(row.name, packIds, combined);
+      built.push(createSticker({
+        id: idGen.uuid(),
         name: resolvedName,
         packIds,
         tags: row.tags,
         data: buffers[i],
         mimeType: row.candidate.mimeType,
         createdAt: now,
-        lastUsedAt: now,
-      });
+      }));
     }
 
-    // Step 3: one tx for all writes.
+    // Step 4: ONE tx for all writes.
     await this.db.tx(['stickers', 'packs'], 'readwrite', scope => {
       for (const p of newPacks) this.packs.put(scope, p);
-      for (const s of builtStickers) this.stickers.put(scope, s);
+      for (const s of built) this.stickers.put(scope, s);
     });
 
-    return { stickers: builtStickers, newPacks };
+    return { stickers: built, newPacks };
   }
 
-  // Imports stickers from a zip file.
-  //
-  // Transaction discipline:
-  //   Step 1 — zip.unpack(file) outside tx (already returns ArrayBuffers).
-  //   Step 2 — compute IDs, name collisions.
-  //   Step 3 — ONE tx over ['stickers', 'packs'].
-  async importZip(
-    file: File,
-    allStickers: Sticker[],
-    allPacks: Pack[],
-  ): Promise<{ stickers: Sticker[]; newPacks: Pack[] }> {
-    // Step 1: unpack outside tx. ZipCodecPort guarantees ArrayBuffers.
+  // ZIP import: dedup by id (IDB.md §Import dedup semantics).
+  async importZip(file: File): Promise<ImportResult> {
+    // Step 1: unpack outside tx (zip.unpack returns ArrayBuffers).
     const { manifest, files } = await this.zip.unpack(file);
 
-    // Step 2: resolve packs and build sticker entities.
-    const packNames = manifest.packs.map(p => p.name);
-    const { packMap, newPacks } = resolvePacks(packNames, allPacks, this.idGen, this.clock);
+    // Step 2: one tx — collect existing ids, then insert non-duplicates.
+    let stickersImported = 0;
+    let packsImported = 0;
+    let stickersSkipped = 0;
+    let packsSkipped = 0;
 
-    // Also register packs from the manifest that carried explicit IDs.
-    // Prefer the manifest's pack id when importing — but only for packs that
-    // are not already present in allPacks by name. The packMap already handles
-    // name-based resolution; here we build a separate id-remap table.
-    const manifestPackIdToLocal = new Map<string, string>();
-    for (const mp of manifest.packs) {
-      const localId = packMap.get(mp.name);
-      if (localId !== undefined) {
-        manifestPackIdToLocal.set(mp.id, localId);
-      }
-    }
-
-    const now = this.clock.now();
-    const builtStickers: Sticker[] = [];
-    for (const entry of manifest.stickers) {
-      const buf = files.get(entry.filename);
-      if (!buf) continue; // skip entries with missing data
-
-      const localPackIds = entry.packIds
-        .map(id => manifestPackIdToLocal.get(id))
-        .filter((id): id is string => id !== undefined);
-
-      const combinedExisting = [...allStickers, ...builtStickers];
-      const resolvedName = resolveNameCollision(entry.name, localPackIds, combinedExisting);
-      builtStickers.push({
-        id: this.idGen.uuid(),
-        name: resolvedName,
-        packIds: localPackIds,
-        tags: entry.tags,
-        data: buf,
-        mimeType: entry.mimeType as Sticker['mimeType'],
-        createdAt: entry.createdAt,
-        lastUsedAt: now,
-      });
-    }
-
-    // Step 3: one tx.
     await this.db.tx(['stickers', 'packs'], 'readwrite', scope => {
-      for (const p of newPacks) this.packs.put(scope, p);
-      for (const s of builtStickers) this.stickers.put(scope, s);
+      const existingPackIds = new Set(this.packs.getAll(scope).map(p => p.id));
+      const existingStickerIds = new Set(this.stickers.getAll(scope).map(s => s.id));
+
+      for (const p of manifest.packs) {
+        if (existingPackIds.has(p.id)) {
+          packsSkipped++;
+        } else {
+          this.packs.put(scope, { id: p.id, name: p.name, createdAt: p.createdAt });
+          existingPackIds.add(p.id);
+          packsImported++;
+        }
+      }
+
+      for (const s of manifest.stickers) {
+        if (existingStickerIds.has(s.id)) {
+          stickersSkipped++;
+          continue;
+        }
+        const buf = files.get(s.file);
+        if (!buf) {
+          stickersSkipped++;
+          continue;
+        }
+        this.stickers.put(scope, {
+          id: s.id,
+          name: s.name,
+          packIds: s.packIds,
+          tags: s.tags,
+          data: buf,
+          mimeType: s.mimeType,
+          createdAt: s.createdAt,
+          lastUsedAt: s.lastUsedAt,
+        });
+        existingStickerIds.add(s.id);
+        stickersImported++;
+      }
     });
 
-    return { stickers: builtStickers, newPacks };
+    return { stickersImported, packsImported, stickersSkipped, packsSkipped };
   }
-}
-
-// Resolves a list of pack names against existing packs, creating new Pack
-// objects (not yet persisted) for names that don't exist. Returns a name→id
-// map covering all names and the new packs list.
-function resolvePacks(
-  names: string[],
-  allPacks: Pack[],
-  idGen: IdGenerator,
-  clock: Clock,
-): { packMap: Map<string, string>; newPacks: Pack[] } {
-  const packMap = new Map<string, string>();
-  const newPacks: Pack[] = [];
-  for (const name of names) {
-    if (packMap.has(name)) continue;
-    const existing = allPacks.find(p => p.name === name);
-    if (existing) {
-      packMap.set(name, existing.id);
-    } else {
-      // Check if already created in this batch.
-      const already = newPacks.find(p => p.name === name);
-      if (already) {
-        packMap.set(name, already.id);
-      } else {
-        const pack: Pack = { id: idGen.uuid(), name, createdAt: clock.now() };
-        newPacks.push(pack);
-        packMap.set(name, pack.id);
-      }
-    }
-  }
-  return { packMap, newPacks };
 }

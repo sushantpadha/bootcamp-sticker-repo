@@ -1,12 +1,11 @@
 import type { AppState } from '../app/engine/appState';
 import type { Intent } from '../app/engine/intents';
 import {
-  AllSelection,
-  PackSelection,
-  UngroupedSelection,
+  AllSelection, PackSelection, UngroupedSelection,
 } from '../domain/selection/sidebarSelection';
 import type { SidebarSelection } from '../domain/selection/sidebarSelection';
 import { PackRow } from './PackRow';
+import { SIDEBAR_HEADER_STYLE } from './theme/styles';
 
 interface Props {
   snapshot: AppState;
@@ -26,14 +25,15 @@ export function Sidebar({ snapshot, dispatch }: Props) {
       sel,
       count: stickers.filter(s => s.packIds.includes(sel.id)).length,
     })),
-    {
-      sel: ungroupedSel,
-      count: stickers.filter(s => s.packIds.length === 0).length,
-    },
+    { sel: ungroupedSel, count: stickers.filter(s => s.packIds.length === 0).length },
   ];
 
   return (
-    <div style={{ paddingTop: 8 }}>
+    <div>
+      <div style={SIDEBAR_HEADER_STYLE}>
+        <span>PACKS</span>
+        <span>[{stickers.length}]</span>
+      </div>
       {rows.map(({ sel, count }) => (
         <PackRow
           key={sel.key}

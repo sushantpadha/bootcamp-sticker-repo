@@ -1,9 +1,9 @@
-import type { Engine } from '../engine/engineHandle';
+import type { CommandContext } from '../engine/commandContext';
 import type { Command, CommandOutcome } from './command';
 
-// Resolves a text input string against registered commands using longest-path
-// (greedy trie) matching. The first token(s) are the command path; any remaining
-// tokens become args. Unmatched input returns E492 per DOMAIN.md §Command.
+// Trie / longest-path resolver. Registered commands are stored; on run(input)
+// the first command whose path matches the longest prefix of tokens wins.
+// E492 on miss.
 export class CommandRegistry {
   private readonly commands: Command[] = [];
 
@@ -11,24 +11,29 @@ export class CommandRegistry {
     this.commands.push(command);
   }
 
-  run(input: string, engine: Engine): CommandOutcome {
+  // Returns the unique first-token set across registered command paths.
+  // Used by CommandMode Tab autocomplete.
+  firstTokens(): string[] {
+    return Array.from(new Set(this.commands.map(c => c.path[0])));
+  }
+
+  async run(input: string, ctx: CommandContext): Promise<CommandOutcome> {
     const trimmed = input.trim();
     if (!trimmed) return { ok: true };
-
     const tokens = trimmed.split(/\s+/);
 
-    // Longest path wins — sort by path length descending so the most specific
-    // command is tried first (e.g. 'pack rename' beats 'pack').
     const candidates = [...this.commands].sort((a, b) => b.path.length - a.path.length);
-
     for (const cmd of candidates) {
       const plen = cmd.path.length;
       if (tokens.length < plen) continue;
       if (cmd.path.every((p, i) => p === tokens[i])) {
-        return cmd.run(tokens.slice(plen), engine);
+        try {
+          return await cmd.run(tokens.slice(plen), ctx);
+        } catch (err) {
+          return { ok: false, flash: `E: ${err instanceof Error ? err.message : String(err)}` };
+        }
       }
     }
-
     return { ok: false, flash: `E492: Not an editor command: ${trimmed}` };
   }
 }
