@@ -24,15 +24,16 @@ import type { CSSProperties } from 'react';
 // Visual constants from SPEC + ARCHITECTURE.md §Visual constants.
 
 // ── Sizes ────────────────────────────────────────────────────────────────────
-export const SIDEBAR_WIDTH_PX = 180;
-export const STATUSLINE_HEIGHT_PX = 28;
-export const CELL_SIZE_PX = 96;
-export const THUMB_SIZE_PX = 48;
+// All pixel constants scaled ×1.25 from original spec values.
+export const SIDEBAR_WIDTH_PX = 225;
+export const STATUSLINE_HEIGHT_PX = 35;
+export const CELL_SIZE_PX = 120;
+export const THUMB_SIZE_PX = 60;
 export const HOVER_SCALE = 1.15;
 export const HOVER_Z = 10;
 export const TOOLTIP_Z = 11;
-export const STICKER_NAME_MAX = 12;
-export const PACK_NAME_MAX = 14;
+export const STICKER_NAME_MAX = 15;
+export const PACK_NAME_MAX = 18;
 
 // ── Truncation helper ───────────────────────────────────────────────────────
 export function truncate(s: string, maxChars: number): string {
@@ -84,9 +85,9 @@ export const SIDEBAR_HEADER_STYLE: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  padding: '8px 12px 4px',
+  padding: '10px 15px 5px',
   color: 'var(--text-dim)',
-  fontSize: 11,
+  fontSize: 14,
   letterSpacing: '0.06em',
   textTransform: 'uppercase',
   borderBottom: '1px solid var(--border)',
@@ -95,11 +96,16 @@ export const SIDEBAR_HEADER_STYLE: CSSProperties = {
 export const SIDEBAR_ROW_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  padding: '3px 12px',
+  padding: '4px 15px',
   cursor: 'pointer',
-  whiteSpace: 'pre',          // preserve "> " vs "  " alignment
   color: 'var(--text-dim)',
   userSelect: 'none',
+};
+
+export const PACK_ROW_MARKER_STYLE: CSSProperties = {
+  display: 'inline-block',
+  width: '1em',
+  flexShrink: 0,
 };
 
 export const SIDEBAR_ROW_ACTIVE_STYLE: CSSProperties = {
@@ -108,16 +114,16 @@ export const SIDEBAR_ROW_ACTIVE_STYLE: CSSProperties = {
 };
 
 // ── Sticker grid + cell ────────────────────────────────────────────────────
+// gridTemplateColumns is omitted — Grid.tsx computes it dynamically from cellZoom.
 export const GRID_STYLE: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: `repeat(auto-fill, ${CELL_SIZE_PX}px)`,
   gap: 1,
-  padding: 8,
+  padding: 10,
   alignContent: 'start',
 };
 
+// width is not set here — StickerCell overrides it with the dynamic cellSize prop.
 export const CELL_STYLE: CSSProperties = {
-  width: CELL_SIZE_PX,
   cursor: 'pointer',
   background: 'var(--bg)',
   border: '1px solid var(--border)',
@@ -139,18 +145,21 @@ export const CELL_HOVER_STYLE: CSSProperties = {
   border: '1px solid var(--border-focus)',
 };
 
+// width/height are not set here — StickerCell overrides them with the dynamic cellSize prop.
 export const CELL_IMAGE_STYLE: CSSProperties = {
-  width: CELL_SIZE_PX,
-  height: CELL_SIZE_PX,
   objectFit: 'contain',
   display: 'block',
 };
 
 export const CELL_NAME_STYLE: CSSProperties = {
-  fontSize: 11,
+  fontSize: 14,           // overridden dynamically by StickerCell based on cellSize
   color: 'var(--text-dim)',
-  padding: '2px 4px',
+  padding: '3px 5px',
   whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  minWidth: 0,            // prevents flex child from overflowing parent
+  boxSizing: 'border-box',
 };
 
 // ── Tooltip ────────────────────────────────────────────────────────────────
@@ -161,12 +170,12 @@ export const TOOLTIP_STYLE: CSSProperties = {
   background: 'var(--bg-subtle)',
   color: 'var(--text)',
   border: '1px solid var(--border)',
-  padding: '4px 6px',
-  fontSize: 11,
+  padding: '5px 8px',
+  fontSize: 14,
   whiteSpace: 'pre',
   zIndex: TOOLTIP_Z,
   pointerEvents: 'none',
-  maxWidth: 240,
+  maxWidth: 300,
   overflow: 'hidden',
 };
 
@@ -175,7 +184,7 @@ export const STATUS_CONTAINER_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   height: '100%',
-  padding: '0 8px',
+  padding: '0 10px',
   overflow: 'hidden',
   userSelect: 'none',
 };
@@ -183,7 +192,7 @@ export const STATUS_CONTAINER_STYLE: CSSProperties = {
 export const STATUS_LABEL_STYLE: CSSProperties = {
   fontWeight: 600,
   whiteSpace: 'nowrap',
-  paddingRight: 8,
+  paddingRight: 10,
   color: 'var(--text)',
 };
 
@@ -201,7 +210,7 @@ export const STATUS_INPUT_STYLE: CSSProperties = {
 
 export const STATUS_RIGHT_STYLE: CSSProperties = {
   whiteSpace: 'nowrap',
-  paddingLeft: 8,
+  paddingLeft: 10,
   color: 'var(--text-dim)',
 };
 
@@ -233,10 +242,10 @@ export const MODAL_PANEL_STYLE: CSSProperties = {
 };
 
 export const MODAL_HEADER_STYLE: CSSProperties = {
-  padding: '8px 12px',
+  padding: '10px 15px',
   borderBottom: '1px solid var(--border)',
   color: 'var(--text)',
-  fontSize: 11,
+  fontSize: 14,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
   flexShrink: 0,
@@ -245,11 +254,11 @@ export const MODAL_HEADER_STYLE: CSSProperties = {
 export const MODAL_BODY_STYLE: CSSProperties = {
   flex: 1,
   overflowY: 'auto',
-  padding: '8px 12px',
+  padding: '10px 15px',
 };
 
 export const MODAL_FOOTER_STYLE: CSSProperties = {
-  padding: '8px 12px',
+  padding: '10px 15px',
   borderTop: '1px solid var(--border)',
   display: 'flex',
   justifyContent: 'flex-end',
@@ -258,14 +267,14 @@ export const MODAL_FOOTER_STYLE: CSSProperties = {
 
 // ── Drop zone ──────────────────────────────────────────────────────────────
 export const DROP_ZONE_STYLE: CSSProperties = {
-  margin: 8,
+  margin: 10,
   border: '2px dashed var(--border)',
-  padding: 16,
+  padding: 20,
   textAlign: 'center',
   color: 'var(--text-dim)',
   cursor: 'pointer',
   flexShrink: 0,
-  fontSize: 12,
+  fontSize: 15,
   letterSpacing: '0.05em',
 };
 
@@ -282,8 +291,8 @@ export const INPUT_STYLE: CSSProperties = {
   border: '1px solid var(--border)',
   color: 'var(--text)',
   fontFamily: 'inherit',
-  fontSize: 12,
-  padding: '3px 6px',
+  fontSize: 15,
+  padding: '4px 8px',
   outline: 'none',
   width: '100%',
 };
@@ -293,10 +302,10 @@ export const BUTTON_PRIMARY_STYLE: CSSProperties = {
   background: 'var(--bg)',
   color: 'var(--text)',
   border: '1px solid var(--border-focus)',
-  padding: '4px 16px',
+  padding: '5px 20px',
   cursor: 'pointer',
   fontFamily: 'inherit',
-  fontSize: 12,
+  fontSize: 15,
   letterSpacing: '0.05em',
 };
 
@@ -313,8 +322,8 @@ export const BUTTON_REMOVE_STYLE: CSSProperties = {
   color: 'var(--text-error)',
   cursor: 'pointer',
   fontFamily: 'inherit',
-  fontSize: 14,
-  padding: '2px 6px',
+  fontSize: 18,
+  padding: '3px 8px',
   flexShrink: 0,
   lineHeight: 1,
 };
@@ -323,23 +332,23 @@ export const BUTTON_REMOVE_STYLE: CSSProperties = {
 export const HELP_TWO_COL_STYLE: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr 1fr',
-  gap: 24,
+  gap: 30,
 };
 
 export const HELP_SECTION_HEADING_STYLE: CSSProperties = {
   color: 'var(--text-dim)',
-  fontSize: 11,
+  fontSize: 14,
   letterSpacing: '0.06em',
   textTransform: 'uppercase',
-  marginBottom: 4,
+  marginBottom: 5,
   borderBottom: '1px solid var(--border)',
-  paddingBottom: 2,
+  paddingBottom: 3,
 };
 
 export const HELP_KEY_CELL_STYLE: CSSProperties = {
-  paddingRight: 12,
-  paddingTop: 2,
-  paddingBottom: 2,
+  paddingRight: 15,
+  paddingTop: 3,
+  paddingBottom: 3,
   color: 'var(--text)',
   whiteSpace: 'nowrap',
   verticalAlign: 'top',
@@ -348,8 +357,8 @@ export const HELP_KEY_CELL_STYLE: CSSProperties = {
 
 export const HELP_DESC_CELL_STYLE: CSSProperties = {
   color: 'var(--text-dim)',
-  paddingTop: 2,
-  paddingBottom: 2,
+  paddingTop: 3,
+  paddingBottom: 3,
   verticalAlign: 'top',
 };
 
@@ -366,8 +375,8 @@ export const EMPTY_CENTERED_STYLE: CSSProperties = {
 export const QUEUE_ROW_STYLE: CSSProperties = {
   display: 'flex',
   alignItems: 'flex-start',
-  gap: 10,
-  padding: '8px 0',
+  gap: 13,
+  padding: '10px 0',
   borderBottom: '1px solid var(--border)',
 };
 

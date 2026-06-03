@@ -29,6 +29,14 @@ interface AppState {
   gridCols: number;             // current visible-grid column count; published
                                 // by ui/Grid via ResizeObserver. Default 1.
 
+  // ── zoom (ephemeral) ──
+  cellZoom: number;             // sticker cell size in px; Ctrl+=/- in NormalMode;
+                                // range [64, 192] in 16px steps; default 120
+
+  // ── preview overlay (ephemeral) ──
+  previewOpen: boolean;         // Space in NormalMode opens full-size sticker view;
+                                // Esc or Space closes it
+
   // ── mode / input ──
   modeName: ModeName;           // identity of the one active mode
   statusInput: string;          // engine-owned statusline buffer (contract in MODES.md)
@@ -114,8 +122,9 @@ they recompute from `snapshot` per the table above.
 `dispatch` accepts a closed `Intent` union. Handlers (`app/engine/intents.ts`) are
 the only code that produces a new `AppState`. Public intents (params elided):
 
-`loadAll`, `moveFocus(id)`, `moveFocusDir(dir, cols)`, `setSelection`,
-`cycleSelection(±1)`, `setSort`, `setSearch`, `setGridCols`, `yankFocused`,
+`loadAll`, `moveFocus(id)`, `moveFocusDir(dir, cols)`, `searchNext`, `searchPrev`,
+`setSelection`, `cycleSelection(±1)`, `jumpToPack(index)`, `setSort`, `setSearch`,
+`setGridCols`, `setZoom(delta)`, `setPreviewOpen(open)`, `yankFocused`,
 `enqueueCandidates`, `editQueueRow`, `removeQueueRow`, `saveUpload`,
 `deleteFocused`, `renameFocused`, `setTags`, `assignPacks`, `toggleFavourite`,
 `setTheme`, `setStatusInput`, `flash`, `transitionMode`.
@@ -123,6 +132,12 @@ the only code that produces a new `AppState`. Public intents (params elided):
 `moveFocus(id)` sets focus to a specific sticker id; `moveFocusDir(dir, cols)`
 moves focus relatively in the grid (`up|down|left|right|first|last`) using
 `cols` for 2-D semantics (UI publishes via `setGridCols` on resize).
+
+`cycleSelection(±1)` walks the sidebar cycle ring built fresh from `state.packs` on
+each dispatch:
+**All → [user packs in insertion order] → Favourites → Ungrouped → (wraps to All)**
+`+1` steps forward (`p` / `Tab` / `Ctrl+N`); `−1` steps backward (`P` / `Shift+Tab`
+/ `Ctrl+P`). The `[n]p` form jumps directly to the nth user pack (1-indexed).
 
 **Engine-internal changes** (NOT part of the public Intent union; not
 dispatchable from outside the engine): `applySticker`, `applyStickers`,
@@ -148,13 +163,13 @@ Inline literals at call sites (DECISIONS §18); this catalog is reference only.
 | Toggle favourite off | `untagged: favourite` | no |
 | Upload save success | `added: <N> stickers` | no |
 | Import success | `imported: <N> stickers, <M> packs (<K> skipped)` | no |
-| Export start | `exporting...` | no |
-| Export finish | `done: <N> stickers` | no |
+| Export | `exporting... done: <N> stickers` | no |
 | Sort change | `sort: <id>` | no |
 | Theme change | `theme: <dark\|light>` | no |
 | `:tag add foo` | `tagged: foo` | no |
 | `:tag remove foo` | `untagged: foo` | no |
 | `:tag rename old new` | `renamed tag "old" → "new" (<N> stickers)` | no |
+| `:tag clear` | `tags cleared` | no |
 | `:pack new <name>` | `pack "<name>" created` | no |
 | `:pack rename <name>` | `pack renamed to "<name>"` | no |
 | `:pack delete` | `pack "<name>" deleted (<M> stickers updated)` | no |

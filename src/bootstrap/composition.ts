@@ -59,6 +59,7 @@ export const engine = new EngineImpl({
 
 // Read persisted state and dispatch loadAll.
 export async function initAsync(): Promise<void> {
+  void navigator.storage?.persist?.();
   await db.init();
   const { s, p } = await db.tx(['stickers', 'packs'], 'readonly', scope => ({
     s: stickers.getAll(scope),

@@ -8,7 +8,9 @@ no sync, no account. Your stickers stay in IndexedDB until you export them.
 - Vim-style keybindings — navigate, yank, tag, and organize without touching the mouse
 - Two themes: terminal green on black, or GitHub light (`ctrl+t` to toggle)
 - Pack-based organization with multi-pack membership
-- ZIP export/import for backup and migration
+- Favourites — mark stickers with ⭐ using `f`; filter via the ⭐ Favourites row in the sidebar
+- Preview — press `Space` to view a sticker full-size with its name, tags, and packs
+- ZIP export/import for backup and migration (favourite tags round-trip in the manifest)
 - Supports PNG, GIF, WebP, APNG
 
 ## Running it
@@ -31,18 +33,20 @@ That's it. No backend. Open `http://localhost:5173` and press `a` to add your fi
 | `gg` / `G` | first / last sticker |
 | `0` / `$` | first / last in row |
 | `p` / `P` | next / previous pack |
-| `Enter` / `yy` | copy sticker to clipboard |
+| `Enter` / `yy` | copy sticker to clipboard (yank) |
 | `a` | add stickers |
 | `r` | rename |
 | `t` | edit tags |
 | `m` | assign packs |
-| `f` | toggle favourite |
+| `f` | toggle favourite (⭐) |
+| `Space` | preview focused sticker full-size |
 | `d` | delete |
 | `/` | search |
 | `n` / `N` | next / previous search match |
 | `:` | command palette |
 | `?` | help |
 | `ctrl+t` | toggle theme |
+| `ctrl+=` / `ctrl+-` | zoom in / zoom out (extensions beyond base spec) |
 
 Full keybinding reference: press `?` in the app.
 
@@ -75,13 +79,14 @@ npm test          # run once
 npm run test:watch  # watch mode
 ```
 
-Tests live in `src/test/engine.test.ts`. They cover the engine/FSM layer only —
+Tests live in `src/test/rebuild.test.ts`. They cover the engine/FSM layer only —
 no UI, no DOM. The suite uses `src/test/fakes/` as in-memory port substitutes.
 
-**Adding tests:** write a new `it(...)` in `engine.test.ts` (or a new `describe`
-block in the same file for a new subject). Use `makeEngine(registry?)` to get a
-wired engine and `FakeKeyValueStore` for the KV port. Inject a custom registry
-(`makeRegistry(...)`) when you need to observe mode lifecycle calls.
+**Adding tests:** write a new `it(...)` in `rebuild.test.ts` (or a new `describe`
+block in the same file for a new subject). Use the `fullPorts()` helper from the
+test file to get a wired port set, then construct `new EngineImpl(ports)`. Inject
+a custom `IModeRegistry` via the second constructor argument when you need to
+observe mode lifecycle calls.
 
 **Node version note:** Vitest runs against its own bundled Vite 5 via
 `vitest.config.ts`; `vite.config.ts` is only used by the dev server. Do not
@@ -108,7 +113,7 @@ See `docs/ARCHITECTURE.md` for the full model. `docs/SPEC.md` is the original pr
 ## Tech stack
 
 - React 18 + Vite
-- Tailwind (layout/spacing only — all colors via CSS custom properties)
+- Inline styles via `styles.ts` (no Tailwind — all colors via CSS custom properties)
 - JSZip
 - IndexedDB via a hand-rolled ports-and-adapters layer
 - No other runtime dependencies

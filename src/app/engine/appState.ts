@@ -14,6 +14,10 @@ export interface Flash {
   isError: boolean;
 }
 
+// Default cell size matching the 125%-scaled CELL_SIZE_PX constant.
+// Defined here (not imported from ui/) to avoid the app→ui layer violation.
+export const DEFAULT_CELL_ZOOM = 120;
+
 export interface AppState {
   // in-memory source of truth loaded from IDB
   stickers: Sticker[];
@@ -29,6 +33,12 @@ export interface AppState {
 
   // viewport feedback from UI (for 2-D nav)
   gridCols: number;            // published by ui/Grid via ResizeObserver; default 1
+
+  // zoom — ephemeral; Ctrl+= / Ctrl+- in NormalMode; [64, 192] in 16px steps
+  cellZoom: number;
+
+  // preview overlay — ephemeral; Space in NormalMode opens full-size sticker view
+  previewOpen: boolean;
 
   // mode / input
   modeName: ModeName;

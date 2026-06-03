@@ -27,13 +27,8 @@ export class NormalMode implements Mode {
   private digitBuffer = '';
   private digitHandle: TimerHandle | null = null;
 
-  constructor(timer?: Timer) {
-    // Default Timer wraps globalThis (allowed here because NormalMode is the
-    // only consumer that may be constructed in tests without composition root).
-    this.timer = timer ?? {
-      setTimeout: (cb, ms) => globalThis.setTimeout(cb, ms),
-      clearTimeout: (h) => globalThis.clearTimeout(h as ReturnType<typeof globalThis.setTimeout>),
-    };
+  constructor(timer: Timer) {
+    this.timer = timer;
   }
 
   onEnter(_engine: Engine): void {}
@@ -52,6 +47,15 @@ export class NormalMode implements Mode {
     evt.preventDefault();
 
     const state = engine.getSnapshot();
+
+    // When preview overlay is open, absorb all keys; Space or Escape closes it.
+    if (state.previewOpen) {
+      if (key === 'Escape' || key === ' ') {
+        engine.dispatch({ type: 'setPreviewOpen', open: false });
+      }
+      return;
+    }
+
     const cols = state.gridCols;
     const hasFocus = state.focusId !== null;
 
@@ -110,6 +114,12 @@ export class NormalMode implements Mode {
         case 't': case 'T':
           engine.dispatch({ type: 'setTheme', theme: state.theme === 'dark' ? 'light' : 'dark' });
           engine.setFlash(`theme: ${state.theme === 'dark' ? 'light' : 'dark'}`, false);
+          return;
+        case '=':
+          engine.dispatch({ type: 'setZoom', delta: 16 });
+          return;
+        case '-':
+          engine.dispatch({ type: 'setZoom', delta: -16 });
           return;
         default: return;
       }
@@ -179,6 +189,12 @@ export class NormalMode implements Mode {
         case 'm':
           if (!hasFocus) return;
           engine.transitionTo('PACKASSIGN');
+          return;
+
+        // Preview overlay (Space)
+        case ' ':
+          if (!hasFocus) return;
+          engine.dispatch({ type: 'setPreviewOpen', open: true });
           return;
 
         // Mode transitions (no focus requirement)

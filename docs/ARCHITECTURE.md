@@ -184,16 +184,21 @@ each adapter to its fake, no other file changes required.
 These constants are referenced by `ui/theme/themeVars.css` and `ui/theme/styles.ts`.
 They are derived from SPEC.md and must not be drifted from without a SPEC change.
 
-| Constant | Value | Used in |
+**Visual scaling decision:** All pixel dimensions are scaled ×1.25 from the SPEC-specified values.
+The SPEC uses a compact 96 px cell; the implementation uses 120 px for readability on standard
+displays. The table below shows the scaled values as implemented in `styles.ts`, with the original
+SPEC source values in parentheses.
+
+| Constant | Value (SPEC × 1.25) | Used in |
 |---|---|---|
-| Sidebar width | 180 px | AppRoot layout |
-| Statusline height | 28 px | AppRoot layout |
-| Sticker cell size | 96 × 96 px | StickerCell, Grid template |
-| Sticker thumbnail (upload modal) | 48 × 48 px | UploadModal QueueRow |
+| Sidebar width | 225 px (SPEC: 180 px) | AppRoot layout |
+| Statusline height | 35 px (SPEC: 28 px) | AppRoot layout |
+| Sticker cell size | 120 × 120 px (SPEC: 96 × 96 px) | StickerCell, Grid template |
+| Sticker thumbnail (upload modal) | 60 × 60 px (SPEC: 48 × 48 px) | UploadModal QueueRow |
 | Sticker hover scale | 1.15 | StickerCell |
 | Hover z-index | 10 | StickerCell |
-| Sticker name truncation | 12 chars + `..` | StickerCell |
-| Pack name truncation | 14 chars + `..` | PackRow |
+| Sticker name truncation | 15 chars + `..` (SPEC: 12) | StickerCell |
+| Pack name truncation | 18 chars + `..` (SPEC: 14) | PackRow |
 | Sidebar active marker | `> ` (2 chars) | PackRow |
 | Sidebar inactive marker | `  ` (2 spaces) | PackRow (alignment) |
 | Pack count format | `[<n>]` | Sidebar header, PackRow |
@@ -226,20 +231,57 @@ helper:
 No other CSS custom properties are permitted. No Tailwind hardcoded colors.
 All component styles read from these vars via `var(--*)`.
 
-## Shared style patterns (ui/theme/styles.ts)
+## Styling system
 
-To keep styling easily changeable: every repeated inline-style fragment lives
-as a named constant in `ui/theme/styles.ts`. Components import the constant
-rather than re-declaring the object. Examples:
+The whole visual surface is driven by exactly two files:
 
-- `INPUT_STYLE` — statusline input, queue row inputs
-- `CELL_STYLE` — base 96×96 cell
-- `CELL_FOCUSED_STYLE`, `CELL_HOVER_STYLE` — additive variants
-- `MODAL_BACKDROP_STYLE`, `MODAL_PANEL_STYLE` — both overlays
-- `SIDEBAR_ROW_STYLE`, `SIDEBAR_ROW_ACTIVE_STYLE`
-- `STATUSLINE_CONTAINER_STYLE`, `STATUSLINE_LABEL_STYLE`
-- `DROP_ZONE_STYLE`, `DROP_ZONE_OVER_STYLE`
-- `TOOLTIP_STYLE`
+- **`ui/theme/themeVars.css`** — the nine SPEC CSS variables plus `--overlay-bg`
+  (see CSS variables table above), with `.theme-dark` and `.theme-light` rule sets.
+  Terminal green on black for dark; GitHub Light for light. Scrollbars hidden globally
+  (`scrollbar-width: none` + `::-webkit-scrollbar { display: none }`).
 
-Changing a visual aspect = one edit in `styles.ts`. Changing a color = one
-edit in `themeVars.css`. Components stay free of hard-coded styling.
+- **`ui/theme/styles.ts`** — exports ~30 named JS inline-style constants, dimension
+  constants (`SIDEBAR_WIDTH_PX = 225`, `CELL_SIZE_PX = 120`, `HOVER_SCALE = 1.15`,
+  `STICKER_NAME_MAX = 15`, `PACK_NAME_MAX = 18`, …), and a `truncate(s, max)`
+  helper that produces `"<prefix>.."` at the spec-mandated char count.
+
+**Tailwind divergence:** Tailwind CSS is not installed. All colors are driven by CSS
+custom properties in `themeVars.css`, not Tailwind utility classes. `styles.ts` exports
+plain JS inline-style objects (CSSProperties) rather than Tailwind class strings. The
+"No Tailwind hardcoded colors" invariant in the CSS variables table applies: components
+must read `var(--*)` for every color, never hardcode hex/rgb values.
+
+Every component imports from `styles.ts` — no component inlines a hardcoded color,
+size, or layout dimension.
+
+| To change… | Edit |
+|---|---|
+| Theme colors | `themeVars.css` (per `.theme-dark` / `.theme-light` block) |
+| New CSS variable (must be SPEC-justified) | `themeVars.css` |
+| Sizes (sidebar 180px, cell 96px, etc.) | `styles.ts` exported constants |
+| Hover effect (scale + z-index) | `styles.ts` `CELL_HOVER_STYLE` |
+| Tooltip appearance | `styles.ts` `TOOLTIP_STYLE` |
+| Modal panel chrome | `styles.ts` `MODAL_*_STYLE` |
+| Truncation cutoff | `styles.ts` `STICKER_NAME_MAX` / `PACK_NAME_MAX` |
+| Drop-zone visual | `styles.ts` `DROP_ZONE_STYLE` / `DROP_ZONE_OVER_STYLE` |
+| Statusline label style | `styles.ts` `STATUSLINE_LABEL_STYLE` |
+
+## Key invariants
+
+Quick lookup: which invariant is enforced where.
+
+| Invariant | Enforced by |
+|---|---|
+| `Sticker.data` is always `ArrayBuffer`, never `Blob` | DOMAIN.md + `Repository.put` type + service layer |
+| `Pack.id` is always a UUID (no virtual packs in `packs[]`) | DOMAIN.md + `createPack` factory |
+| `(ungrouped)` is a virtual selection, never persisted | `SidebarSelection` split (DOMAIN.md) |
+| Focus stored by id, not by index (sort-swap safe) | STATE.md Decision E + `AppState.focusId` |
+| One IDB transaction per service operation | IDB.md + `IdbDatabase.tx` single-tx impl |
+| No foreign awaits inside a tx body | IDB.md transaction discipline |
+| Flash auto-clears after 2000ms via injected `Timer` | STATE.md + `FlashScheduler` |
+| Only theme persists across reloads | STATE.md Decision D + `LocalStorageKeyValueStore` |
+| Mode FSM has exactly one active mode | MODES.md Decision B + `transitionTo` |
+| Browser globals only inside `infra/` | Composition root rule (this doc) |
+| No hardcoded colors; all via CSS vars | `themeVars.css` + `styles.ts` |
+| Empty-grid action keys are silent no-ops | MODES.md NormalMode keybinding table |
+| Grid focus wraps at row edges | MODES.md NormalMode + `moveFocusDir` reducer |

@@ -1,4 +1,5 @@
 import type { Sticker } from '../entities/sticker';
+import { FAVOURITE_TAG } from '../values/favouriteTag';
 
 // [LSP] Only the genuinely common behaviour of All/Pack/Ungrouped rows is in the
 // supertype: a stable key, a label, and a grid predicate. Rename/delete/persist are
@@ -34,4 +35,10 @@ export class UngroupedSelection implements SidebarSelection {
   readonly key = 'ungrouped';
   label(): string { return '(ungrouped)'; }
   matches(s: Sticker): boolean { return s.packIds.length === 0; }
+}
+
+export class FavouritesSelection implements SidebarSelection {
+  readonly key = 'favourites';
+  label(): string { return '⭐ Favourites'; }
+  matches(s: Sticker): boolean { return s.tags.includes(FAVOURITE_TAG); }
 }

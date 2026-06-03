@@ -8,6 +8,7 @@ import { Sidebar } from './Sidebar';
 import { Statusline } from './Statusline';
 import { HelpModal } from './overlays/HelpModal';
 import { UploadModal } from './overlays/UploadModal';
+import { PreviewModal } from './overlays/PreviewModal';
 import {
   APP_ROOT_STYLE, TOP_REGION_STYLE, SIDEBAR_PANEL_STYLE, GRID_PANEL_STYLE,
   STATUSLINE_PANEL_STYLE,
@@ -40,6 +41,9 @@ export function AppRoot({ engine }: Props) {
           {overlay?.type === 'HELP' && <HelpModal />}
           {overlay?.type === 'UPLOAD' && (
             <UploadModal snapshot={snapshot} dispatch={dispatch} />
+          )}
+          {snapshot.previewOpen && (
+            <PreviewModal snapshot={snapshot} objectURLs={objectURLs} dispatch={dispatch} />
           )}
         </div>
       </div>

@@ -7,8 +7,7 @@ Read the doc(s) listed for your task before writing any code.
 | File | Authoritative for |
 |---|---|
 | `docs/SPEC.md` | Source of truth for product behavior — consult when explicitly asked to verify spec alignment |
-| `docs/COMPLETED_TASKS.md` | Completed build milestones, global ordering gates (G1, G2) |
-| `docs/ARCHITECTURE.md` | Directory structure, layer boundaries, import rules, composition root, LSP macro-decisions |
+| `docs/ARCHITECTURE.md` | Directory structure, layer boundaries, import rules, composition root, LSP macro-decisions, styling system |
 | `docs/DOMAIN.md` | Entity shapes, SupportedMime, pure substitutable contracts (selection, sort, command, candidate, naming, search) |
 | `docs/IDB.md` | Port interfaces, IDB schema, transaction discipline, ArrayBuffer/Blob boundary, fake contract |
 | `docs/MODES.md` | Mode FSM contract, engine handle, single-active-mode invariant, per-mode enter/exit, input buffer, statusline model |
@@ -16,13 +15,7 @@ Read the doc(s) listed for your task before writing any code.
 
 ## Current focus
 
-All milestones are complete. Work now targets bridging gaps between the implementation and the spec, and fixing bugs. When asked to verify spec alignment, read `docs/SPEC.md` first.
-
-## Global ordering gates
-
-- **G1.** No UI task (M11+) starts until the IDB layer (M2–M3) and the AppState shape (M4) are complete.
-- **G2.** No mode task (M6+) starts until the Mode interface and the engine shell (M5) exist.
-- Build strictly in numeric order; a task's acceptance must pass before the next.
+All spec gaps have been addressed. Work targets keeping the implementation aligned with SPEC.md and expanding test coverage. When asked to verify spec alignment, read `docs/SPEC.md` first.
 
 ## Module dependency rules
 
@@ -62,9 +55,7 @@ Run `npm run check` after any change. It runs all three checks in sequence and s
 | `npm run lint` | ESLint — style, unused vars, React rules |
 | `npm run build` | Full Vite bundle — catches tree-shaking and import errors missed above |
 
-## Milestone completion checklist
-
-Before marking any milestone done, run `npm run check` and confirm it passes, then run tests.
+## Before pushing
 
 1. `npm run check` — must exit clean (types + lint + build)
 2. `npm test` — all tests must pass
@@ -73,14 +64,14 @@ Before marking any milestone done, run `npm run check` and confirm it passes, th
 
 Run: `npm test` (once) or `npm run test:watch`.
 
-All tests live in `src/test/engine.test.ts`. They exercise the engine + Mode FSM
+All tests live in `src/test/rebuild.test.ts`. They exercise the engine + Mode FSM
 using the fakes in `src/test/fakes/` — no DOM, no UI.
 
 When adding a test that needs to observe mode lifecycle calls (`onEnter`/`onExit`),
 inject a custom registry via the second arg of `EngineImpl`:
 
 ```ts
-const engine = new EngineImpl({ kv: new FakeKeyValueStore() }, myRegistry);
+const engine = new EngineImpl(ports, myRegistry);
 ```
 
 `IModeRegistry` (exported from `app/engine/engine.ts`) is the interface to satisfy —

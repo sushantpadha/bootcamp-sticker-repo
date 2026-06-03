@@ -8,6 +8,7 @@ import {
   AllSelection,
   PackSelection,
   UngroupedSelection,
+  FavouritesSelection,
 } from '../../domain/selection/sidebarSelection';
 import { type AppState, computeVisibleGrid, type QueuedSticker } from './appState';
 
@@ -49,6 +50,12 @@ export type Intent =
 
   // Theme (persists via KeyValueStore)
   | { type: 'setTheme'; theme: 'dark' | 'light' }
+
+  // Zoom — ephemeral cell size adjustment (Ctrl+= / Ctrl+-)
+  | { type: 'setZoom'; delta: number }
+
+  // Preview overlay — ephemeral full-size sticker view (Space in NormalMode)
+  | { type: 'setPreviewOpen'; open: boolean }
 
   // Mode / input
   | { type: 'setStatusInput'; value: string }
@@ -258,6 +265,14 @@ export function reduce(state: AppState, change: AnyChange): AppState {
       return { ...state, packs, stickers, selection };
     }
 
+    case 'setZoom': {
+      const next = Math.min(192, Math.max(64, state.cellZoom + change.delta));
+      return state.cellZoom === next ? state : { ...state, cellZoom: next };
+    }
+
+    case 'setPreviewOpen':
+      return state.previewOpen === change.open ? state : { ...state, previewOpen: change.open };
+
     case 'setTheme':
       return state.theme === change.theme ? state : { ...state, theme: change.theme };
 
@@ -288,11 +303,12 @@ function computeVisibleGridWith(state: AppState, overrides: Partial<AppState>): 
   return computeVisibleGrid({ ...state, ...overrides });
 }
 
-// Sidebar cycle order: All → packs (in state.packs order) → Ungrouped → All
+// Sidebar cycle order: All → packs (in state.packs order) → Favourites → Ungrouped → All
 function buildSelectionRing(state: AppState): SidebarSelection[] {
   return [
     new AllSelection(),
     ...state.packs.map(p => new PackSelection(p.id, p.name)),
+    new FavouritesSelection(),
     new UngroupedSelection(),
   ];
 }

@@ -30,14 +30,8 @@ export class UploadMode implements Mode {
 
   overlay(_engine: Engine): OverlayModel { return { type: 'UPLOAD' }; }
 
-  // Clear queue in one step (UI revokes object URLs in its useEffect cleanup).
+  // Clear the queue by removing rows in reverse so indices stay valid during removal.
   onExit(engine: Engine): void {
-    // We can't dispatch an internal `clearUploadQueue` (it's engine-internal).
-    // Use the public `removeQueueRow` in reverse, OR better — issue an
-    // empty-queue replacement via repeated removes. To keep this O(1) we
-    // expose clearing through `setStatusInput`-style: dispatch an explicit
-    // sequence. Simpler path: use `enqueueCandidates` semantics aren't right
-    // either. We dispatch `removeQueueRow` for each index.
     const len = engine.getSnapshot().uploadQueue.length;
     for (let i = len - 1; i >= 0; i--) {
       engine.dispatch({ type: 'removeQueueRow', index: i });
