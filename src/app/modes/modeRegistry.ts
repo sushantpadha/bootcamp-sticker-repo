@@ -58,7 +58,7 @@ function buildCommandRegistry(): CommandRegistry {
 export class ModeRegistry {
   private readonly modes: ReadonlyMap<ModeName, Mode>;
 
-  constructor(getCtx: () => CommandContext, timer: Timer = defaultTimer()) {
+  constructor(getCtx: () => CommandContext, timer: Timer) {
     const cmdRegistry = buildCommandRegistry();
     this.modes = new Map<ModeName, Mode>([
       ['NORMAL',     new NormalMode(timer)],
@@ -78,11 +78,3 @@ export class ModeRegistry {
   }
 }
 
-// Default Timer when EngineImpl doesn't pass one (tests). Real engine wires
-// the injected Timer; this is a fallback for ModeRegistry's constructor sig.
-function defaultTimer(): Timer {
-  return {
-    setTimeout: (cb, ms) => globalThis.setTimeout(cb, ms),
-    clearTimeout: (h) => globalThis.clearTimeout(h as ReturnType<typeof globalThis.setTimeout>),
-  };
-}

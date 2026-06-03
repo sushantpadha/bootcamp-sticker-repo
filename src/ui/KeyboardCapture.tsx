@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react';
 import type { EngineStore } from '../app/engine/engine';
 import type { AppState } from '../app/engine/appState';
+import { createClipboardCandidate } from '../app/upload/candidateFactories';
+import { isAcceptedUploadMime } from '../app/upload/mimeCoercion';
 
 interface Props {
   engine: EngineStore;
@@ -54,6 +56,28 @@ export function KeyboardCapture({ engine, snapshot }: Props): null {
 
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
+  }, [engine]);
+
+  // Paste handler — active only in UPLOAD mode. Routes clipboard images through
+  // the engine dispatch system (enqueueCandidates) instead of a component-local listener.
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent): void {
+      if (snapshotRef.current.modeName !== 'UPLOAD') return;
+      if (!e.clipboardData) return;
+      const items = Array.from(e.clipboardData.items)
+        .filter(item => isAcceptedUploadMime(item.type));
+      if (items.length === 0) return;
+      e.preventDefault();
+      const blobs = items
+        .map(item => item.getAsFile())
+        .filter((b): b is File => b !== null && isAcceptedUploadMime(b.type));
+      if (blobs.length === 0) return;
+      const startIdx = snapshotRef.current.uploadQueue.length;
+      const candidates = blobs.map((blob, i) => createClipboardCandidate(blob, startIdx + i));
+      engine.dispatch({ type: 'enqueueCandidates', candidates });
+    }
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
   }, [engine]);
 
   return null;

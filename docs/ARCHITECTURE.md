@@ -184,16 +184,21 @@ each adapter to its fake, no other file changes required.
 These constants are referenced by `ui/theme/themeVars.css` and `ui/theme/styles.ts`.
 They are derived from SPEC.md and must not be drifted from without a SPEC change.
 
-| Constant | Value | Used in |
+**Visual scaling decision:** All pixel dimensions are scaled ×1.25 from the SPEC-specified values.
+The SPEC uses a compact 96 px cell; the implementation uses 120 px for readability on standard
+displays. The table below shows the scaled values as implemented in `styles.ts`, with the original
+SPEC source values in parentheses.
+
+| Constant | Value (SPEC × 1.25) | Used in |
 |---|---|---|
-| Sidebar width | 180 px | AppRoot layout |
-| Statusline height | 28 px | AppRoot layout |
-| Sticker cell size | 96 × 96 px | StickerCell, Grid template |
-| Sticker thumbnail (upload modal) | 48 × 48 px | UploadModal QueueRow |
+| Sidebar width | 225 px (SPEC: 180 px) | AppRoot layout |
+| Statusline height | 35 px (SPEC: 28 px) | AppRoot layout |
+| Sticker cell size | 120 × 120 px (SPEC: 96 × 96 px) | StickerCell, Grid template |
+| Sticker thumbnail (upload modal) | 60 × 60 px (SPEC: 48 × 48 px) | UploadModal QueueRow |
 | Sticker hover scale | 1.15 | StickerCell |
 | Hover z-index | 10 | StickerCell |
-| Sticker name truncation | 12 chars + `..` | StickerCell |
-| Pack name truncation | 14 chars + `..` | PackRow |
+| Sticker name truncation | 15 chars + `..` (SPEC: 12) | StickerCell |
+| Pack name truncation | 18 chars + `..` (SPEC: 14) | PackRow |
 | Sidebar active marker | `> ` (2 chars) | PackRow |
 | Sidebar inactive marker | `  ` (2 spaces) | PackRow (alignment) |
 | Pack count format | `[<n>]` | Sidebar header, PackRow |
@@ -236,9 +241,15 @@ The whole visual surface is driven by exactly two files:
   (`scrollbar-width: none` + `::-webkit-scrollbar { display: none }`).
 
 - **`ui/theme/styles.ts`** — exports ~30 named JS inline-style constants, dimension
-  constants (`SIDEBAR_WIDTH_PX = 180`, `CELL_SIZE_PX = 96`, `HOVER_SCALE = 1.15`,
-  `STICKER_NAME_MAX = 12`, `PACK_NAME_MAX = 14`, …), and a `truncate(s, max)`
+  constants (`SIDEBAR_WIDTH_PX = 225`, `CELL_SIZE_PX = 120`, `HOVER_SCALE = 1.15`,
+  `STICKER_NAME_MAX = 15`, `PACK_NAME_MAX = 18`, …), and a `truncate(s, max)`
   helper that produces `"<prefix>.."` at the spec-mandated char count.
+
+**Tailwind divergence:** Tailwind CSS is not installed. All colors are driven by CSS
+custom properties in `themeVars.css`, not Tailwind utility classes. `styles.ts` exports
+plain JS inline-style objects (CSSProperties) rather than Tailwind class strings. The
+"No Tailwind hardcoded colors" invariant in the CSS variables table applies: components
+must read `var(--*)` for every color, never hardcode hex/rgb values.
 
 Every component imports from `styles.ts` — no component inlines a hardcoded color,
 size, or layout dimension.

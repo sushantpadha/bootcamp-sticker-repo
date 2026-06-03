@@ -37,13 +37,21 @@ const NORMAL_SECTIONS: Section[] = [
   {
     heading: 'Sticker actions',
     rows: [
-      { keys: 'yy / Enter / y',  desc: 'yank (copy)' },
+      { keys: 'yy / Enter',       desc: 'yank (copy)' },
       { keys: 'a',               desc: 'upload modal' },
       { keys: 'd',               desc: 'delete (confirm)' },
       { keys: 'r',               desc: 'rename' },
       { keys: 't',               desc: 'edit tags' },
       { keys: 'm',               desc: 'assign packs' },
       { keys: 'f',               desc: 'toggle favourite' },
+    ],
+  },
+  {
+    heading: 'View',
+    rows: [
+      { keys: 'Space',           desc: 'preview focused sticker' },
+      { keys: 'Ctrl+=',          desc: 'zoom in' },
+      { keys: 'Ctrl+-',          desc: 'zoom out' },
     ],
   },
   {

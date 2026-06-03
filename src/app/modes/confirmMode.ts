@@ -33,10 +33,10 @@ export class ConfirmMode implements Mode {
   }
 
   statusline(_engine: Engine): StatuslineModel {
-    const hint = this.pending !== null
+    const right = this.pending !== null
       ? `delete "${this.pending.stickerName}"? [y/n]`
       : '[y/n]';
-    return { mode: 'CONFIRM', hint };
+    return { mode: 'CONFIRM', right };
   }
   overlay(_engine: Engine): OverlayModel | null { return null; }
   onExit(_engine: Engine): void { this.pending = null; }

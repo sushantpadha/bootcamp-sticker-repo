@@ -70,6 +70,7 @@ export const TagClearCommand: Command = {
     const sticker = getFocusedSticker(ctx);
     if (!sticker) return { ok: true };
     ctx.dispatch({ type: 'setTags', tags: [] });
+    ctx.setFlash('tags cleared', false);
     return { ok: true };
   },
 };

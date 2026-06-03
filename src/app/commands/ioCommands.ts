@@ -9,11 +9,10 @@ export const ExportCommand: Command = {
       ctx.setFlash('E: nothing to export', true);
       return { ok: true };
     }
-    ctx.setFlash('exporting...', false);
     try {
       const result = await ctx.services.export.exportAll(stickers, packs);
       ctx.ports.downloadBlob(result.blob, result.filename);
-      ctx.setFlash(`done: ${result.stickerCount} stickers`, false);
+      ctx.setFlash(`exporting... done: ${result.stickerCount} stickers`, false);
       return { ok: true };
     } catch (err) {
       return { ok: false, flash: `E: ${err instanceof Error ? err.message : String(err)}` };

@@ -13,6 +13,7 @@ import { AllSelection } from '../../domain/selection/sidebarSelection';
 import { RecentSort } from '../../domain/sort/stickerSort';
 import { FlashScheduler } from './flash';
 import { type Intent, type AnyChange, reduce } from './intents';
+import { DEFAULT_CELL_ZOOM } from './appState';
 import { ModeRegistry } from '../modes/modeRegistry';
 import { YankService } from '../services/yankService';
 import { PackService } from '../services/packService';
@@ -65,13 +66,6 @@ function canBuildServices(p: EnginePorts): boolean {
   return !!(p.db && p.stickers && p.packs && p.clipboard && p.idGen && p.clock && p.zip);
 }
 
-function defaultGlobalTimer(): Timer {
-  return {
-    setTimeout: (cb, ms) => globalThis.setTimeout(cb, ms),
-    clearTimeout: (h) => globalThis.clearTimeout(h as ReturnType<typeof globalThis.setTimeout>),
-  };
-}
-
 function noopDownload(_blob: Blob, _filename: string): void { /* no-op */ }
 
 const FLASH_DURATION_MS = 2000;
@@ -91,6 +85,8 @@ function buildInitialState(kv: KeyValueStore): AppState {
     search: '',
     focusId: null,
     gridCols: 1,
+    cellZoom: DEFAULT_CELL_ZOOM,
+    previewOpen: false,
     modeName: 'NORMAL',
     statusInput: '',
     uploadQueue: [],
@@ -124,7 +120,8 @@ export class EngineImpl implements EngineStore {
   constructor(ports: EnginePorts, registry?: IModeRegistry) {
     this.ports = ports;
     this.state = buildInitialState(ports.kv);
-    const timer = ports.timer ?? defaultGlobalTimer();
+    if (!ports.timer) throw new Error('Timer port is required');
+    const timer = ports.timer;
     this.flashScheduler = new FlashScheduler(timer);
     // Services are only constructed when ALL their backing ports are present.
     // Without them, dispatch routes to no-op handlers (early-return when svc===null).
@@ -204,8 +201,12 @@ export class EngineImpl implements EngineStore {
 
   // Command context passed to commands (broader surface than mode handle).
   private makeCommandContext(): CommandContext {
+    if (!this.svc) {
+      throw new Error('makeCommandContext called without required ports');
+    }
     // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
+    const svc = this.svc;
     return {
       getSnapshot:    () => self.getSnapshot(),
       dispatch:       (i: Intent) => self.dispatch(i),
@@ -223,10 +224,10 @@ export class EngineImpl implements EngineStore {
         downloadBlob: self.ports.downloadBlob ?? noopDownload,
       },
       services: {
-        pack: self.svc!.pack,
-        tag: self.svc!.tag,
-        export: self.svc!.export,
-        import: self.svc!.import,
+        pack: svc.pack,
+        tag: svc.tag,
+        export: svc.export,
+        import: svc.import,
       },
     };
   }

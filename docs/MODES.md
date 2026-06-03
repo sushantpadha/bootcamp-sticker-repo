@@ -103,13 +103,12 @@ ConfirmMode's `pending` action ref is sanctioned by the per-mode table.
 | `G` | jump to last sticker |
 | `0` | first sticker in current row |
 | `$` | last sticker in current row |
-| `p` | next pack (cycle: All → packs → Ungrouped → All) |
+| `p` | next pack (cycle: All → packs → Favourites → Ungrouped → All) |
 | `P` | previous pack |
 | `[n]p` | jump to nth pack (1-indexed; index 1 = first user pack; digit buffer clears after 1s; out-of-range clamps to last) |
 | `Tab` / `Ctrl+N` | alias for `p` |
 | `Shift+Tab` / `Ctrl+P` | alias for `P` |
 | `Enter` / `yy` | yank focused sticker |
-| `y` (single) | alias for `yy` (immediate yank) |
 | `f` | toggle `favourite` tag on focused sticker |
 | `a` | enter UPLOAD mode |
 | `d` | enter CONFIRM (delete focused) |
@@ -123,11 +122,19 @@ ConfirmMode's `pending` action ref is sanctioned by the per-mode table.
 | `?` | enter HELP |
 | `Ctrl+T` | toggle theme |
 
+**Extensions beyond SPEC (intentional; documented here as canonical):**
+
+| Key | Action |
+|---|---|
+| `Space` | open preview overlay for focused sticker (focusId must be non-null; dispatches `setPreviewOpen`) |
+| `Ctrl+=` | zoom in — increase `cellZoom` by 16 px (clamps at 192) |
+| `Ctrl+-` | zoom out — decrease `cellZoom` by 16 px (clamps at 64) |
+
 **Edge cases the keybinding layer must honor:**
 - Row-edge wrap: `h` at col 0 wraps to last col of previous row; `l` at last
   col wraps to first col of next row. (Vertical edges clamp normally.)
 - Empty-grid silent no-op: when `state.focusId === null`, keys `d`, `r`, `t`,
-  `m`, `f`, `y`, `yy`, `Enter` are no-ops (no flash, no transition).
+  `m`, `f`, `yy`, `Enter` are no-ops (no flash, no transition).
 - `0` alone is the row-start jump (not the digit accumulator); a leading `0`
   with no prior non-zero digit must be treated as the row-start command.
 
@@ -163,7 +170,7 @@ interface StatuslineModel {
 | NORMAL | `NORMAL` | — | `<sort> · <selection label> · [focusIndex+1/total]` |
 | SEARCH | `SEARCH` | `/query` (live) | `<matchCount> matches` |
 | COMMAND | `COMMAND` | `:buffer` (tab-completes 1st token) | — |
-| CONFIRM | `CONFIRM` | — | hint: `delete "name"? [y/n]` |
+| CONFIRM | `CONFIRM` | — | `delete "name"? [y/n]` |
 | RENAME | `RENAME` | prefilled name | — |
 | TAGS | `TAGS` | prefilled `tag1, tag2` | — |
 | PACKASSIGN | `PACKASSIGN` | prefilled pack names (tab-completes token) | — |
@@ -173,3 +180,31 @@ interface StatuslineModel {
 Flash interaction (timing owned by STATE.md): while a flash is live it overrides the
 `left` label only; `input`/`right` still come from the active mode. Errors render in
 `var(--text-error)`.
+
+## Modal Overlays
+
+Some features render a full-screen overlay without entering a new mode. They are NOT
+modes (no `Mode` contract, no `transitionTo` call, no `onEnter`/`onExit` lifecycle).
+They intercept keyboard input via an early return inside `NormalMode.handleKey` before
+any normal keybinding is processed. The flag driving each overlay lives in `AppState`
+and is ephemeral (not persisted, resets on reload).
+
+### Preview Overlay (`previewOpen: boolean`)
+
+**Open:** `Space` in NORMAL when `focusId` is non-null (dispatches
+`{ type: 'setPreviewOpen', open: true }`).
+
+**Close:** `Escape` or `Space` (both dispatch `{ type: 'setPreviewOpen', open: false }`);
+clicking the backdrop also closes.
+
+**Content** (rendered by `ui/overlays/PreviewModal.tsx`):
+- Full-size sticker image (max 512×512, `object-fit: contain`)
+- Sticker name (bold, 20 px)
+- Tags line (if sticker has any tags)
+- Packs line (if sticker belongs to any packs)
+- Hint: `esc / space to close`
+
+**Key capture:** while `state.previewOpen === true`, NormalMode's `handleKey` returns
+immediately after dispatching the close intent for `Escape`/`Space`, consuming all
+other keys silently. No UPLOAD/HELP/CONFIRM transitions can be triggered while the
+overlay is open.

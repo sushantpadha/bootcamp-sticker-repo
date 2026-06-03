@@ -13,7 +13,7 @@
 html {
   font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas,
     'Courier New', monospace;
-  font-size: 13px;
+  font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -30,6 +30,16 @@ body {
 }
 *::-webkit-scrollbar {
   display: none;
+}
+
+/* ─── CONFIRM blink animation ─────────────────────────────────────────────── */
+@keyframes statusline-blink-kf {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+.statusline-blink {
+  animation: statusline-blink-kf 150ms ease-in-out 3;
 }
 
 /* ─── Dark theme — terminal green on black (SPEC §Themes) ───────────────── */

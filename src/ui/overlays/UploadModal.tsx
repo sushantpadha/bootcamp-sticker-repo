@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import type { AppState } from '../../app/engine/appState';
 import type { QueuedSticker } from '../../app/upload/uploadQueue';
 import type { Intent } from '../../app/engine/intents';
-import { FileStickerCandidate } from '../../app/upload/fileCandidate';
-import { ClipboardStickerCandidate } from '../../app/upload/clipboardCandidate';
+import { createFileCandidate } from '../../app/upload/candidateFactories';
 import { isAcceptedUploadMime, UPLOAD_ACCEPT } from '../../app/upload/mimeCoercion';
 import { completeToken } from '../../domain/naming/completeToken';
 import {
@@ -59,7 +58,7 @@ export function UploadModal({ snapshot, dispatch }: Props) {
   const enqueueFiles = useCallback((files: Iterable<File>) => {
     const valid = Array.from(files).filter(f => isAcceptedUploadMime(f.type));
     if (valid.length === 0) return;
-    const candidates = valid.map(f => new FileStickerCandidate(f));
+    const candidates = valid.map(f => createFileCandidate(f));
     dispatch({ type: 'enqueueCandidates', candidates });
   }, [dispatch]);
 
@@ -84,26 +83,6 @@ export function UploadModal({ snapshot, dispatch }: Props) {
     input.onchange = () => { if (input.files) enqueueFiles(input.files); };
     input.click();
   };
-
-  // ── Ctrl+V paste ────────────────────────────────────────────────────
-  useEffect(() => {
-    const handler = (e: ClipboardEvent) => {
-      if (!e.clipboardData) return;
-      const items = Array.from(e.clipboardData.items)
-        .filter(item => isAcceptedUploadMime(item.type));
-      if (items.length === 0) return;
-      e.preventDefault();
-      const blobs = items
-        .map(item => item.getAsFile())
-        .filter((b): b is File => b !== null && isAcceptedUploadMime(b.type));
-      if (blobs.length === 0) return;
-      const startIdx = uploadQueue.length;
-      const candidates = blobs.map((blob, i) => new ClipboardStickerCandidate(blob, startIdx + i));
-      dispatch({ type: 'enqueueCandidates', candidates });
-    };
-    window.addEventListener('paste', handler);
-    return () => window.removeEventListener('paste', handler);
-  }, [dispatch, uploadQueue.length]);
 
   const handleAddAll = () => dispatch({ type: 'saveUpload' });
   const packNames = packs.map(p => p.name);

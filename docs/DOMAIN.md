@@ -63,6 +63,9 @@ Implementations (all substitutable for filtering + display):
 - AllSelection      → matches = () => true
 - PackSelection(packId) → matches = s => s.packIds.includes(packId)
 - UngroupedSelection → matches = s => s.packIds.length === 0
+- FavouritesSelection → matches = s => s.tags.includes('favourite')
+  (The `⭐ Favourites` sidebar row; sits between the last user pack and Ungrouped in
+  the `p`/`P` cycle ring — see STATE.md §cycleSelection.)
 
 Mutation lives only on the real `Pack` entity. Commands that rename/delete first
 verify the active selection IS a `PackSelection`; otherwise they fail with

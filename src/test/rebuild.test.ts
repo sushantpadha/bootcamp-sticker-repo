@@ -462,6 +462,8 @@ describe('computeVisibleGrid', () => {
       search: '',
       focusId: null,
       gridCols: 3,
+      cellZoom: 120,
+      previewOpen: false,
       modeName: 'NORMAL' as const,
       statusInput: '',
       uploadQueue: [],
@@ -482,7 +484,7 @@ describe('computeVisibleGrid', () => {
   });
 
   it('sorts filtered results', () => {
-    // Use 'alp' to match only s1 ('alpha') and s3 ('gamma') — not s2 ('zoom').
+    // Use 'alp' to match only s1 ('alpha') and s3 ('galpha') — not s2 ('zoom').
     const s1b: Sticker = { ...s1, name: 'alpha' };
     const s2b: Sticker = { ...s2, name: 'zoom' };
     const s3b: Sticker = { ...s3, name: 'galpha' }; // also matches 'alp'
@@ -626,5 +628,279 @@ describe('PackAssignMode Tab autocomplete', () => {
     'work, fam'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
     engine.handleKey(mkKey('Tab'));
     expect(engine.getSnapshot().statusInput).toBe('work, family');
+  });
+});
+
+// ── setZoom reducer ──────────────────────────────────────────────────────────
+describe('setZoom reducer', () => {
+  it('increases cellZoom by 16', () => {
+    const engine = new EngineImpl(fullPorts());
+    const before = engine.getSnapshot().cellZoom;
+    engine.dispatch({ type: 'setZoom', delta: 16 });
+    expect(engine.getSnapshot().cellZoom).toBe(before + 16);
+  });
+
+  it('decreases cellZoom by 16', () => {
+    const engine = new EngineImpl(fullPorts());
+    const before = engine.getSnapshot().cellZoom;
+    engine.dispatch({ type: 'setZoom', delta: -16 });
+    expect(engine.getSnapshot().cellZoom).toBe(before - 16);
+  });
+
+  it('clamps at 192 max', () => {
+    const engine = new EngineImpl(fullPorts());
+    for (let i = 0; i < 20; i++) engine.dispatch({ type: 'setZoom', delta: 16 });
+    expect(engine.getSnapshot().cellZoom).toBe(192);
+  });
+
+  it('clamps at 64 min', () => {
+    const engine = new EngineImpl(fullPorts());
+    for (let i = 0; i < 20; i++) engine.dispatch({ type: 'setZoom', delta: -16 });
+    expect(engine.getSnapshot().cellZoom).toBe(64);
+  });
+});
+
+// ── NormalMode: Ctrl+= / Ctrl+- zoom ────────────────────────────────────────
+describe('NormalMode zoom keys', () => {
+  function mkKey(key: string, ctrl = false) {
+    return { key, ctrl, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('Ctrl+= dispatches setZoom +16', () => {
+    const engine = new EngineImpl(fullPorts());
+    const before = engine.getSnapshot().cellZoom;
+    engine.handleKey(mkKey('=', true));
+    expect(engine.getSnapshot().cellZoom).toBe(before + 16);
+  });
+
+  it('Ctrl+- dispatches setZoom -16', () => {
+    const engine = new EngineImpl(fullPorts());
+    const before = engine.getSnapshot().cellZoom;
+    engine.handleKey(mkKey('-', true));
+    expect(engine.getSnapshot().cellZoom).toBe(before - 16);
+  });
+});
+
+// ── Preview overlay ──────────────────────────────────────────────────────────
+describe('Preview overlay (previewOpen)', () => {
+  const sticker: Sticker = {
+    id: 's1', name: 'pepe', packIds: [], tags: [],
+    data: new Uint8Array([1]).buffer, mimeType: 'image/png',
+    createdAt: 0, lastUsedAt: 0,
+  };
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('Space opens previewOpen when focusId is non-null', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    expect(engine.getSnapshot().previewOpen).toBe(false);
+    engine.handleKey(mkKey(' '));
+    expect(engine.getSnapshot().previewOpen).toBe(true);
+  });
+
+  it('Space is a no-op when grid is empty', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.handleKey(mkKey(' '));
+    expect(engine.getSnapshot().previewOpen).toBe(false);
+  });
+
+  it('Space while preview is open closes it', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.dispatch({ type: 'setPreviewOpen', open: true });
+    engine.handleKey(mkKey(' '));
+    expect(engine.getSnapshot().previewOpen).toBe(false);
+  });
+
+  it('Esc while preview is open closes it', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.dispatch({ type: 'setPreviewOpen', open: true });
+    engine.handleKey(mkKey('Escape'));
+    expect(engine.getSnapshot().previewOpen).toBe(false);
+  });
+
+  it('other keys while preview is open are absorbed (no mode change)', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.dispatch({ type: 'setPreviewOpen', open: true });
+    engine.handleKey(mkKey('d')); // would normally enter CONFIRM
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    expect(engine.getSnapshot().previewOpen).toBe(true);
+  });
+});
+
+// ── ConfirmMode ──────────────────────────────────────────────────────────────
+describe('ConfirmMode', () => {
+  const sticker: Sticker = {
+    id: 's1', name: 'pepe', packIds: [], tags: [],
+    data: new Uint8Array([1]).buffer, mimeType: 'image/png',
+    createdAt: 0, lastUsedAt: 0,
+  };
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('y confirms delete and returns to NORMAL', async () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('d')); // enter CONFIRM
+    expect(engine.getSnapshot().modeName).toBe('CONFIRM');
+    engine.handleKey(mkKey('y'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    // Flush the async service chain: db.tx resolves (1 tick) then .then fires (1 tick).
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(engine.getSnapshot().stickers).toHaveLength(0);
+  });
+
+  it('n cancels and returns to NORMAL without deleting', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('d'));
+    engine.handleKey(mkKey('n'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    expect(engine.getSnapshot().stickers).toHaveLength(1);
+  });
+
+  it('Esc cancels and returns to NORMAL without deleting', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('d'));
+    engine.handleKey(mkKey('Escape'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    expect(engine.getSnapshot().stickers).toHaveLength(1);
+  });
+
+  it('statusline uses right field with sticker name', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('d'));
+    const model = engine.getStatuslineModel();
+    expect(model.mode).toBe('CONFIRM');
+    expect(model.input).toBeUndefined();
+    expect(model.right).toBe('delete "pepe"? [y/n]');
+  });
+});
+
+// ── UploadMode: Esc clears queue via onExit ──────────────────────────────────
+describe('UploadMode', () => {
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  const stubCandidate = {
+    defaultName: 'stub',
+    mimeType: 'image/png' as const,
+    thumbnailUrl: () => 'blob:stub',
+    resolveBytes: async () => new ArrayBuffer(0),
+  };
+
+  it('Esc clears uploadQueue via onExit and returns to NORMAL', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.handleKey(mkKey('a')); // enter UPLOAD
+    expect(engine.getSnapshot().modeName).toBe('UPLOAD');
+    engine.dispatch({ type: 'enqueueCandidates', candidates: [stubCandidate] });
+    expect(engine.getSnapshot().uploadQueue).toHaveLength(1);
+    engine.handleKey(mkKey('Escape'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    expect(engine.getSnapshot().uploadQueue).toHaveLength(0);
+  });
+});
+
+// ── RenameMode ───────────────────────────────────────────────────────────────
+describe('RenameMode', () => {
+  const sticker: Sticker = {
+    id: 's1', name: 'original', packIds: [], tags: [],
+    data: new Uint8Array([1]).buffer, mimeType: 'image/png',
+    createdAt: 0, lastUsedAt: 0,
+  };
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('Enter saves the typed name and returns to NORMAL', async () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('r')); // enter RENAME (prefills 'original')
+    // Override statusInput with new name directly.
+    engine.dispatch({ type: 'setStatusInput', value: 'renamed' });
+    engine.handleKey(mkKey('Enter'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(engine.getSnapshot().stickers[0].name).toBe('renamed');
+  });
+
+  it('Esc cancels and returns to NORMAL without renaming', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('r'));
+    engine.handleKey(mkKey('Escape'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    expect(engine.getSnapshot().stickers[0].name).toBe('original');
+  });
+});
+
+// ── TagsMode ─────────────────────────────────────────────────────────────────
+describe('TagsMode', () => {
+  const sticker: Sticker = {
+    id: 's1', name: 'pepe', packIds: [], tags: ['meme'],
+    data: new Uint8Array([1]).buffer, mimeType: 'image/png',
+    createdAt: 0, lastUsedAt: 0,
+  };
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('Enter saves the typed tags and returns to NORMAL', async () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('t')); // enter TAGS (prefills 'meme')
+    engine.dispatch({ type: 'setStatusInput', value: 'funny, green' });
+    engine.handleKey(mkKey('Enter'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+    expect(engine.getSnapshot().stickers[0].tags).toEqual(['funny', 'green']);
+  });
+
+  it('Esc cancels and returns to NORMAL without changing tags', () => {
+    const engine = new EngineImpl(fullPorts());
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    engine.handleKey(mkKey('t'));
+    engine.handleKey(mkKey('Escape'));
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    expect(engine.getSnapshot().stickers[0].tags).toEqual(['meme']);
+  });
+});
+
+// ── :tag clear flash ─────────────────────────────────────────────────────────
+describe(':tag clear flash', () => {
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('flashes "tags cleared" after clearing tags', async () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    const sticker: Sticker = {
+      id: 's1', name: 'pepe', packIds: [], tags: ['meme', 'green'],
+      data: new Uint8Array([1]).buffer, mimeType: 'image/png',
+      createdAt: 0, lastUsedAt: 0,
+    };
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [] });
+    // Enter COMMAND mode and run :tag clear
+    engine.handleKey(mkKey(':'));
+    'tag clear'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    engine.handleKey(mkKey('Enter'));
+    // CommandMode runs the command asynchronously; setTags is also async.
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(engine.getSnapshot().modeName).toBe('NORMAL');
+    expect(engine.getSnapshot().flash?.text).toBe('tags cleared');
+    expect(engine.getSnapshot().flash?.isError).toBe(false);
+    await Promise.resolve(); // flush setTags service call
+    expect(engine.getSnapshot().stickers[0].tags).toHaveLength(0);
   });
 });
