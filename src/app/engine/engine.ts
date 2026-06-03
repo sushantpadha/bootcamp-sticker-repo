@@ -38,16 +38,19 @@ export interface EngineStore {
 // ── Ports required by the engine ──────────────────────────────────────────────
 export interface EnginePorts {
   kv: KeyValueStore;
-  timer: Timer;
-  db: Database;
-  stickers: StickerRepository;
-  packs: PackRepository;
-  clipboard: ClipboardPort;
-  idGen: IdGenerator;
-  clock: Clock;
-  zip: ZipCodecPort;
-  filePicker: FilePickerPort;
-  downloadBlob: (blob: Blob, filename: string) => void;
+  // All other ports are optional so engine can boot in tests with `{kv}` only.
+  // Composition root passes the full set; engine throws at use-time if a
+  // service is invoked when its backing port is missing.
+  timer?: Timer;
+  db?: Database;
+  stickers?: StickerRepository;
+  packs?: PackRepository;
+  clipboard?: ClipboardPort;
+  idGen?: IdGenerator;
+  clock?: Clock;
+  zip?: ZipCodecPort;
+  filePicker?: FilePickerPort;
+  downloadBlob?: (blob: Blob, filename: string) => void;
 }
 
 interface Services {
@@ -57,6 +60,19 @@ interface Services {
   export: ExportService;
   import: ImportService;
 }
+
+function canBuildServices(p: EnginePorts): boolean {
+  return !!(p.db && p.stickers && p.packs && p.clipboard && p.idGen && p.clock && p.zip);
+}
+
+function defaultGlobalTimer(): Timer {
+  return {
+    setTimeout: (cb, ms) => globalThis.setTimeout(cb, ms),
+    clearTimeout: (h) => globalThis.clearTimeout(h as ReturnType<typeof globalThis.setTimeout>),
+  };
+}
+
+function noopDownload(_blob: Blob, _filename: string): void { /* no-op */ }
 
 const FLASH_DURATION_MS = 2000;
 const THEME_KEY = 'theme';
@@ -97,7 +113,7 @@ export class EngineImpl implements EngineStore {
   private readonly listeners = new Set<() => void>();
   private readonly flashScheduler: FlashScheduler;
   private readonly registry: IModeRegistry;
-  private readonly svc: Services;
+  private readonly svc: Services | null;
   private readonly ports: EnginePorts;
 
   // Suppresses notify() during transitionTo so subscribers see one snapshot
@@ -108,15 +124,20 @@ export class EngineImpl implements EngineStore {
   constructor(ports: EnginePorts, registry?: IModeRegistry) {
     this.ports = ports;
     this.state = buildInitialState(ports.kv);
-    this.flashScheduler = new FlashScheduler(ports.timer);
-    this.svc = {
-      yank:   new YankService(ports.clipboard, ports.db, ports.stickers, ports.clock, ports.downloadBlob),
-      pack:   new PackService(ports.db, ports.packs, ports.stickers, ports.idGen, ports.clock),
-      tag:    new TagService(ports.db, ports.stickers),
-      export: new ExportService(ports.zip, ports.clock),
-      import: new ImportService(ports.db, ports.stickers, ports.packs, ports.zip),
-    };
-    this.registry = registry ?? new ModeRegistry(() => this.makeCommandContext(), ports.timer);
+    const timer = ports.timer ?? defaultGlobalTimer();
+    this.flashScheduler = new FlashScheduler(timer);
+    // Services are only constructed when ALL their backing ports are present.
+    // Without them, dispatch routes to no-op handlers (early-return when svc===null).
+    this.svc = canBuildServices(ports)
+      ? {
+          yank:   new YankService(ports.clipboard!, ports.db!, ports.stickers!, ports.clock!, ports.downloadBlob ?? noopDownload),
+          pack:   new PackService(ports.db!, ports.packs!, ports.stickers!, ports.idGen!, ports.clock!),
+          tag:    new TagService(ports.db!, ports.stickers!),
+          export: new ExportService(ports.zip!, ports.clock!),
+          import: new ImportService(ports.db!, ports.stickers!, ports.packs!, ports.zip!),
+        }
+      : null;
+    this.registry = registry ?? new ModeRegistry(() => this.makeCommandContext(), timer);
   }
 
   // ── EngineStore ───────────────────────────────────────────────────────────────
@@ -192,20 +213,20 @@ export class EngineImpl implements EngineStore {
       setFlash:       (text: string, isError: boolean) => self.setFlash(text, isError),
       setStatusInput: (s: string) => self.setStatusInput(s),
       ports: {
-        db: self.ports.db,
-        stickers: self.ports.stickers,
-        packs: self.ports.packs,
-        zip: self.ports.zip,
-        filePicker: self.ports.filePicker,
-        idGen: self.ports.idGen,
-        clock: self.ports.clock,
-        downloadBlob: self.ports.downloadBlob,
+        db: self.ports.db!,
+        stickers: self.ports.stickers!,
+        packs: self.ports.packs!,
+        zip: self.ports.zip!,
+        filePicker: self.ports.filePicker!,
+        idGen: self.ports.idGen!,
+        clock: self.ports.clock!,
+        downloadBlob: self.ports.downloadBlob ?? noopDownload,
       },
       services: {
-        pack: self.svc.pack,
-        tag: self.svc.tag,
-        export: self.svc.export,
-        import: self.svc.import,
+        pack: self.svc!.pack,
+        tag: self.svc!.tag,
+        export: self.svc!.export,
+        import: self.svc!.import,
       },
     };
   }
@@ -255,13 +276,15 @@ export class EngineImpl implements EngineStore {
       case 'setTheme':
         this.ports.kv.set(THEME_KEY, intent.theme);
         return;
-      case 'yankFocused':      this.handleYankFocused();      return;
-      case 'deleteFocused':    this.handleDeleteFocused();    return;
-      case 'renameFocused':    this.handleRenameFocused(intent.name); return;
-      case 'setTags':          this.handleSetTags(intent.tags); return;
-      case 'assignPacks':      this.handleAssignPacks(intent.packNames); return;
-      case 'toggleFavourite':  this.handleToggleFavourite();  return;
-      case 'saveUpload':       this.handleSaveUpload();       return;
+      // Service-dependent intents — skipped silently when services aren't
+      // wired (engine constructed with only `{kv}` for unit tests).
+      case 'yankFocused':      if (this.svc) this.handleYankFocused();      return;
+      case 'deleteFocused':    if (this.svc) this.handleDeleteFocused();    return;
+      case 'renameFocused':    if (this.svc) this.handleRenameFocused(intent.name); return;
+      case 'setTags':          if (this.svc) this.handleSetTags(intent.tags); return;
+      case 'assignPacks':      if (this.svc) this.handleAssignPacks(intent.packNames); return;
+      case 'toggleFavourite':  if (this.svc) this.handleToggleFavourite();  return;
+      case 'saveUpload':       if (this.svc) this.handleSaveUpload();       return;
       default: return;
     }
   }
@@ -270,7 +293,7 @@ export class EngineImpl implements EngineStore {
   private handleYankFocused(): void {
     const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
     if (!sticker) return;
-    this.svc.yank.yank(sticker)
+    this.svc!.yank.yank(sticker)
       .then(result => {
         this.applyChange({ type: 'applySticker', sticker: result.sticker });
         const ext = mimeExtension[sticker.mimeType];
@@ -286,7 +309,7 @@ export class EngineImpl implements EngineStore {
   private handleDeleteFocused(): void {
     const id = this.state.focusId;
     if (!id) return;
-    this.svc.yank.deleteSticker(id)
+    this.svc!.yank.deleteSticker(id)
       .then(() => this.applyChange({ type: 'removeSticker', id }))
       .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
   }
@@ -294,7 +317,7 @@ export class EngineImpl implements EngineStore {
   private handleRenameFocused(name: string): void {
     const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
     if (!sticker) return;
-    this.svc.yank.renameSticker(sticker, name, this.state.stickers)
+    this.svc!.yank.renameSticker(sticker, name, this.state.stickers)
       .then(updated => {
         this.applyChange({ type: 'applySticker', sticker: updated });
         this.setFlash(`renamed: ${updated.name}`, false);
@@ -305,7 +328,7 @@ export class EngineImpl implements EngineStore {
   private handleSetTags(tags: string[]): void {
     const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
     if (!sticker) return;
-    this.svc.yank.setTags(sticker, tags)
+    this.svc!.yank.setTags(sticker, tags)
       .then(updated => this.applyChange({ type: 'applySticker', sticker: updated }))
       .catch((err: unknown) => this.setFlash(`E: ${errorMessage(err)}`, true));
   }
@@ -313,7 +336,7 @@ export class EngineImpl implements EngineStore {
   private handleAssignPacks(packNames: string[]): void {
     const sticker = this.state.stickers.find(s => s.id === this.state.focusId);
     if (!sticker) return;
-    this.svc.pack.assignPacks(sticker, packNames, this.state.packs, this.state.stickers)
+    this.svc!.pack.assignPacks(sticker, packNames, this.state.packs, this.state.stickers)
       .then(({ sticker: updated, newPacks }) => {
         this.applyChange({ type: 'applySticker', sticker: updated });
         for (const p of newPacks) this.applyChange({ type: 'applyPack', pack: p });
@@ -328,7 +351,7 @@ export class EngineImpl implements EngineStore {
     const tags = has
       ? sticker.tags.filter(t => t !== FAVOURITE_TAG)
       : [...sticker.tags, FAVOURITE_TAG];
-    this.svc.yank.setTags(sticker, tags)
+    this.svc!.yank.setTags(sticker, tags)
       .then(updated => {
         this.applyChange({ type: 'applySticker', sticker: updated });
         this.setFlash(has ? `untagged: ${FAVOURITE_TAG}` : `tagged: ${FAVOURITE_TAG}`, false);
@@ -340,7 +363,7 @@ export class EngineImpl implements EngineStore {
     const { uploadQueue, stickers, packs } = this.state;
     const count = uploadQueue.length;
     if (count === 0) return;
-    this.svc.import.saveUpload(uploadQueue, stickers, packs, this.ports.idGen, this.ports.clock)
+    this.svc!.import.saveUpload(uploadQueue, stickers, packs, this.ports.idGen!, this.ports.clock!)
       .then(({ stickers: newStickers, newPacks }) => {
         this.applyChange({ type: 'applyStickers', stickers: newStickers });
         for (const p of newPacks) this.applyChange({ type: 'applyPack', pack: p });

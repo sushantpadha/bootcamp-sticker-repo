@@ -27,8 +27,13 @@ export class NormalMode implements Mode {
   private digitBuffer = '';
   private digitHandle: TimerHandle | null = null;
 
-  constructor(timer: Timer) {
-    this.timer = timer;
+  constructor(timer?: Timer) {
+    // Default Timer wraps globalThis (allowed here because NormalMode is the
+    // only consumer that may be constructed in tests without composition root).
+    this.timer = timer ?? {
+      setTimeout: (cb, ms) => globalThis.setTimeout(cb, ms),
+      clearTimeout: (h) => globalThis.clearTimeout(h as ReturnType<typeof globalThis.setTimeout>),
+    };
   }
 
   onEnter(_engine: Engine): void {}
