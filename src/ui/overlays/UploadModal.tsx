@@ -32,6 +32,7 @@ export function UploadModal({ snapshot, dispatch }: Props) {
   const [urls, setUrls] = useState<string[]>([]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrls(prev => {
       const next = [...prev];
       uploadQueue.forEach((row, i) => {

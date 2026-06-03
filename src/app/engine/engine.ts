@@ -12,7 +12,7 @@ import type { AppState } from './appState';
 import { AllSelection } from '../../domain/selection/sidebarSelection';
 import { RecentSort } from '../../domain/sort/stickerSort';
 import { FlashScheduler } from './flash';
-import { type Intent, type EngineInternalChange, type AnyChange, reduce } from './intents';
+import { type Intent, type AnyChange, reduce } from './intents';
 import { ModeRegistry } from '../modes/modeRegistry';
 import { YankService } from '../services/yankService';
 import { PackService } from '../services/packService';
@@ -275,6 +275,12 @@ export class EngineImpl implements EngineStore {
     switch (intent.type) {
       case 'setTheme':
         this.ports.kv.set(THEME_KEY, intent.theme);
+        return;
+      case 'flash':
+        // Schedule the 2s auto-clear (replaces any pending timer).
+        this.flashScheduler.schedule(FLASH_DURATION_MS, () => {
+          this.applyChange({ type: 'clearFlash' });
+        });
         return;
       // Service-dependent intents — skipped silently when services aren't
       // wired (engine constructed with only `{kv}` for unit tests).

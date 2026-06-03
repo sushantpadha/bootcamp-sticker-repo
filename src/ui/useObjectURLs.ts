@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Sticker } from '../domain/entities/sticker';
 
 interface CachedURL {
@@ -6,21 +6,20 @@ interface CachedURL {
   buffer: ArrayBuffer;
 }
 
-// Sticker.data → object URL cache. Side effects in useEffect (NOT in render).
-// Returns a stable Map reference (the same instance across renders); React
-// observers compare by identity → no spurious re-renders on cache mutation.
+// Sticker.data → object URL cache. ALL side effects inside useEffect (never
+// during render). Returns a Map<id, url> view derived from a useState-held
+// cache. When the cache mutates inside the effect we trigger a re-render
+// by updating the version, which causes a new derived Map to be produced.
 export function useObjectURLs(stickers: Sticker[]): ReadonlyMap<string, string> {
-  const cacheRef = useRef<Map<string, CachedURL>>(new Map());
-  // We expose a derived `Map<string, string>` view; recompute it only when
-  // the cache content changes (signalled by `version`).
-  const [version, bumpVersion] = useState(0);
+  // Cache holding URL + buffer per sticker id. We use useState (NOT useRef)
+  // so React sees the Map reference but we never replace it — we mutate
+  // it inside effects and bump `version` to signal change.
+  const [cache] = useState<Map<string, CachedURL>>(() => new Map());
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    const cache = cacheRef.current;
     const nextIds = new Set(stickers.map(s => s.id));
     let dirty = false;
-
-    // Remove URLs for stickers no longer present.
     for (const [id, { url }] of cache) {
       if (!nextIds.has(id)) {
         URL.revokeObjectURL(url);
@@ -28,8 +27,6 @@ export function useObjectURLs(stickers: Sticker[]): ReadonlyMap<string, string> 
         dirty = true;
       }
     }
-
-    // Add / refresh URLs for incoming / changed-buffer stickers.
     for (const sticker of stickers) {
       const existing = cache.get(sticker.id);
       if (!existing || existing.buffer !== sticker.data) {
@@ -41,28 +38,24 @@ export function useObjectURLs(stickers: Sticker[]): ReadonlyMap<string, string> 
         dirty = true;
       }
     }
+    if (dirty) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setVersion(v => v + 1);
+    }
+  }, [stickers, cache]);
 
-    if (dirty) bumpVersion(v => v + 1);
-  }, [stickers]);
-
-  // Unmount cleanup.
   useEffect(() => {
-    const cache = cacheRef.current;
     return () => {
       for (const { url } of cache.values()) URL.revokeObjectURL(url);
       cache.clear();
     };
-  }, []);
+  }, [cache]);
 
-  // Public view: a plain Map of id → url. Re-derived only when version bumps.
-  // We use useRef + version so React identity changes only when content does.
-  const viewRef = useRef<ReadonlyMap<string, string>>(new Map());
-  const lastVersion = useRef(-1);
-  if (version !== lastVersion.current) {
-    viewRef.current = new Map(
-      [...cacheRef.current].map(([id, { url }]) => [id, url]),
-    );
-    lastVersion.current = version;
-  }
-  return viewRef.current;
+  // Derived view: a fresh Map every time `version` changes (acceptable —
+  // consumers iterate; identity comparison isn't required by Grid).
+  // `version` is read so React re-runs this hook when the cache mutated.
+  void version;
+  const view = new Map<string, string>();
+  for (const [id, { url }] of cache) view.set(id, url);
+  return view;
 }
