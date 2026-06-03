@@ -226,20 +226,51 @@ helper:
 No other CSS custom properties are permitted. No Tailwind hardcoded colors.
 All component styles read from these vars via `var(--*)`.
 
-## Shared style patterns (ui/theme/styles.ts)
+## Styling system
 
-To keep styling easily changeable: every repeated inline-style fragment lives
-as a named constant in `ui/theme/styles.ts`. Components import the constant
-rather than re-declaring the object. Examples:
+The whole visual surface is driven by exactly two files:
 
-- `INPUT_STYLE` — statusline input, queue row inputs
-- `CELL_STYLE` — base 96×96 cell
-- `CELL_FOCUSED_STYLE`, `CELL_HOVER_STYLE` — additive variants
-- `MODAL_BACKDROP_STYLE`, `MODAL_PANEL_STYLE` — both overlays
-- `SIDEBAR_ROW_STYLE`, `SIDEBAR_ROW_ACTIVE_STYLE`
-- `STATUSLINE_CONTAINER_STYLE`, `STATUSLINE_LABEL_STYLE`
-- `DROP_ZONE_STYLE`, `DROP_ZONE_OVER_STYLE`
-- `TOOLTIP_STYLE`
+- **`ui/theme/themeVars.css`** — the nine SPEC CSS variables plus `--overlay-bg`
+  (see CSS variables table above), with `.theme-dark` and `.theme-light` rule sets.
+  Terminal green on black for dark; GitHub Light for light. Scrollbars hidden globally
+  (`scrollbar-width: none` + `::-webkit-scrollbar { display: none }`).
 
-Changing a visual aspect = one edit in `styles.ts`. Changing a color = one
-edit in `themeVars.css`. Components stay free of hard-coded styling.
+- **`ui/theme/styles.ts`** — exports ~30 named JS inline-style constants, dimension
+  constants (`SIDEBAR_WIDTH_PX = 180`, `CELL_SIZE_PX = 96`, `HOVER_SCALE = 1.15`,
+  `STICKER_NAME_MAX = 12`, `PACK_NAME_MAX = 14`, …), and a `truncate(s, max)`
+  helper that produces `"<prefix>.."` at the spec-mandated char count.
+
+Every component imports from `styles.ts` — no component inlines a hardcoded color,
+size, or layout dimension.
+
+| To change… | Edit |
+|---|---|
+| Theme colors | `themeVars.css` (per `.theme-dark` / `.theme-light` block) |
+| New CSS variable (must be SPEC-justified) | `themeVars.css` |
+| Sizes (sidebar 180px, cell 96px, etc.) | `styles.ts` exported constants |
+| Hover effect (scale + z-index) | `styles.ts` `CELL_HOVER_STYLE` |
+| Tooltip appearance | `styles.ts` `TOOLTIP_STYLE` |
+| Modal panel chrome | `styles.ts` `MODAL_*_STYLE` |
+| Truncation cutoff | `styles.ts` `STICKER_NAME_MAX` / `PACK_NAME_MAX` |
+| Drop-zone visual | `styles.ts` `DROP_ZONE_STYLE` / `DROP_ZONE_OVER_STYLE` |
+| Statusline label style | `styles.ts` `STATUSLINE_LABEL_STYLE` |
+
+## Key invariants
+
+Quick lookup: which invariant is enforced where.
+
+| Invariant | Enforced by |
+|---|---|
+| `Sticker.data` is always `ArrayBuffer`, never `Blob` | DOMAIN.md + `Repository.put` type + service layer |
+| `Pack.id` is always a UUID (no virtual packs in `packs[]`) | DOMAIN.md + `createPack` factory |
+| `(ungrouped)` is a virtual selection, never persisted | `SidebarSelection` split (DOMAIN.md) |
+| Focus stored by id, not by index (sort-swap safe) | STATE.md Decision E + `AppState.focusId` |
+| One IDB transaction per service operation | IDB.md + `IdbDatabase.tx` single-tx impl |
+| No foreign awaits inside a tx body | IDB.md transaction discipline |
+| Flash auto-clears after 2000ms via injected `Timer` | STATE.md + `FlashScheduler` |
+| Only theme persists across reloads | STATE.md Decision D + `LocalStorageKeyValueStore` |
+| Mode FSM has exactly one active mode | MODES.md Decision B + `transitionTo` |
+| Browser globals only inside `infra/` | Composition root rule (this doc) |
+| No hardcoded colors; all via CSS vars | `themeVars.css` + `styles.ts` |
+| Empty-grid action keys are silent no-ops | MODES.md NormalMode keybinding table |
+| Grid focus wraps at row edges | MODES.md NormalMode + `moveFocusDir` reducer |

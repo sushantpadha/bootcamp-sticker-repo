@@ -29,6 +29,10 @@ import { ImportService } from '../app/services/importService';
 import { ExportService } from '../app/services/exportService';
 import { createSticker } from '../domain/entities/sticker';
 import { createPack } from '../domain/entities/pack';
+import { RecentSort, AddedSort, NameSort } from '../domain/sort/stickerSort';
+import { buildSearchPredicate } from '../domain/search/searchPredicate';
+import { computeVisibleGrid } from '../app/engine/appState';
+import { AllSelection } from '../domain/selection/sidebarSelection';
 import type { ExportManifest } from '../app/ports/zipCodecPort';
 import type { Sticker } from '../domain/entities/sticker';
 import type { Pack } from '../domain/entities/pack';
@@ -371,5 +375,256 @@ describe('NormalMode yy window', () => {
     // The first y started a yy window; after timer fire it cleared. The
     // second y starts a new yy window. No yankFocused yet.
     expect(captured.some(i => i.type === 'yankFocused')).toBe(false);
+  });
+});
+
+// ── Domain: StickerSort ──────────────────────────────────────────────────────
+describe('StickerSort', () => {
+  const base = {
+    id: '', name: '', packIds: [], tags: [],
+    data: new ArrayBuffer(0), mimeType: 'image/png' as const,
+    createdAt: 0, lastUsedAt: 0,
+  };
+  const a: Sticker = { ...base, id: 'a', name: 'zebra', createdAt: 100, lastUsedAt: 300 };
+  const b: Sticker = { ...base, id: 'b', name: 'Apple', createdAt: 200, lastUsedAt: 100 };
+  const c: Sticker = { ...base, id: 'c', name: 'mango', createdAt: 300, lastUsedAt: 200 };
+
+  it('RecentSort puts higher lastUsedAt first', () => {
+    const sorted = [a, b, c].sort(RecentSort.compare.bind(RecentSort));
+    expect(sorted.map(s => s.id)).toEqual(['a', 'c', 'b']);
+  });
+
+  it('AddedSort puts higher createdAt first', () => {
+    const sorted = [a, b, c].sort(AddedSort.compare.bind(AddedSort));
+    expect(sorted.map(s => s.id)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('NameSort is case-insensitive alphabetical ascending', () => {
+    const sorted = [a, b, c].sort(NameSort.compare.bind(NameSort));
+    // Apple < mango < zebra (case-insensitive)
+    expect(sorted.map(s => s.id)).toEqual(['b', 'c', 'a']);
+  });
+
+  it('sorts have a stable id tie-breaker', () => {
+    const x: Sticker = { ...base, id: 'x', name: 'twin', createdAt: 50, lastUsedAt: 50 };
+    const y: Sticker = { ...base, id: 'y', name: 'twin', createdAt: 50, lastUsedAt: 50 };
+    // id tie-breaker: 'x' < 'y'
+    expect(NameSort.compare(x, y)).toBeLessThan(0);
+    expect(RecentSort.compare(x, y)).toBeLessThan(0);
+    expect(AddedSort.compare(x, y)).toBeLessThan(0);
+  });
+});
+
+// ── Domain: SearchPredicate ────────────────────────────────────────────────
+describe('SearchPredicate', () => {
+  const base = {
+    id: 's', packIds: [], data: new ArrayBuffer(0),
+    mimeType: 'image/png' as const, createdAt: 0, lastUsedAt: 0,
+  };
+  const pepe: Sticker = { ...base, name: 'Pepe the frog', tags: ['meme', 'green'] };
+
+  it('matches name substring, case-insensitive', () => {
+    expect(buildSearchPredicate('pepe')(pepe)).toBe(true);
+    expect(buildSearchPredicate('FROG')(pepe)).toBe(true);
+  });
+
+  it('matches tag substring', () => {
+    expect(buildSearchPredicate('me')(pepe)).toBe(true); // 'meme' contains 'me'
+    expect(buildSearchPredicate('GREEN')(pepe)).toBe(true);
+  });
+
+  it('returns false on non-matching query', () => {
+    expect(buildSearchPredicate('cats')(pepe)).toBe(false);
+  });
+
+  it('empty query matches everything', () => {
+    expect(buildSearchPredicate('')(pepe)).toBe(true);
+    expect(buildSearchPredicate('   ')(pepe)).toBe(true);
+  });
+});
+
+// ── AppState: computeVisibleGrid with search + sort ────────────────────────
+describe('computeVisibleGrid', () => {
+  const base = {
+    data: new ArrayBuffer(0), mimeType: 'image/png' as const,
+    packIds: [], tags: [], createdAt: 0, lastUsedAt: 0,
+  };
+  const s1: Sticker = { ...base, id: 's1', name: 'alpha', createdAt: 10, lastUsedAt: 30 };
+  const s2: Sticker = { ...base, id: 's2', name: 'beta',  createdAt: 20, lastUsedAt: 20 };
+  const s3: Sticker = { ...base, id: 's3', name: 'gamma', createdAt: 30, lastUsedAt: 10 };
+
+  function baseState(overrides: Partial<Parameters<typeof computeVisibleGrid>[0]>) {
+    return {
+      stickers: [s1, s2, s3],
+      packs: [],
+      selection: new AllSelection(),
+      sort: RecentSort,
+      search: '',
+      focusId: null,
+      gridCols: 3,
+      modeName: 'NORMAL' as const,
+      statusInput: '',
+      uploadQueue: [],
+      flash: null,
+      theme: 'dark' as const,
+      ...overrides,
+    };
+  }
+
+  it('returns all stickers sorted by RecentSort when no search', () => {
+    const grid = computeVisibleGrid(baseState({}));
+    expect(grid.map(s => s.id)).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('filters by search query', () => {
+    const grid = computeVisibleGrid(baseState({ search: 'bet' }));
+    expect(grid.map(s => s.id)).toEqual(['s2']);
+  });
+
+  it('sorts filtered results', () => {
+    // Use 'alp' to match only s1 ('alpha') and s3 ('gamma') — not s2 ('zoom').
+    const s1b: Sticker = { ...s1, name: 'alpha' };
+    const s2b: Sticker = { ...s2, name: 'zoom' };
+    const s3b: Sticker = { ...s3, name: 'galpha' }; // also matches 'alp'
+    const grid = computeVisibleGrid(baseState({ stickers: [s1b, s2b, s3b], search: 'alp', sort: AddedSort }));
+    // AddedSort: higher createdAt first → s3b (createdAt 30) before s1b (createdAt 10)
+    expect(grid.map(s => s.id)).toEqual(['s3', 's1']);
+  });
+});
+
+// ── CommandMode Tab autocomplete ────────────────────────────────────────────
+describe('CommandMode Tab autocomplete', () => {
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('completes partial first token via Tab against registered commands', () => {
+    // The real engine registers pack/sort/tag/theme/export/import/help.
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    engine.handleKey(mkKey(':')); // enter COMMAND mode
+    'pac'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    engine.handleKey(mkKey('Tab'));
+    expect(engine.getSnapshot().statusInput).toBe('pack');
+  });
+
+  it('does not complete when input already contains a space (past first token)', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    engine.handleKey(mkKey(':'));
+    'pack n'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    engine.handleKey(mkKey('Tab'));
+    // Space present → Tab is a no-op for the buffer.
+    expect(engine.getSnapshot().statusInput).toBe('pack n');
+  });
+
+  it('leaves input unchanged when no first-token match', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    engine.handleKey(mkKey(':'));
+    'xyz'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    engine.handleKey(mkKey('Tab'));
+    expect(engine.getSnapshot().statusInput).toBe('xyz');
+  });
+});
+
+// ── SearchMode Esc clears search / Enter locks filter ───────────────────────
+describe('SearchMode Esc and Enter', () => {
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('Esc clears state.search and returns to NORMAL', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    // Enter SEARCH via '/', type 'cats', then Esc.
+    engine.handleKey(mkKey('/'));
+    'cats'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    expect(engine.getSnapshot().search).toBe('cats'); // live update
+    engine.handleKey(mkKey('Escape'));
+    const state = engine.getSnapshot();
+    expect(state.search).toBe('');
+    expect(state.modeName).toBe('NORMAL');
+  });
+
+  it('Enter locks filter (keeps state.search) and returns to NORMAL', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    engine.handleKey(mkKey('/'));
+    'dog'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    engine.handleKey(mkKey('Enter'));
+    const state = engine.getSnapshot();
+    expect(state.search).toBe('dog');
+    expect(state.modeName).toBe('NORMAL');
+  });
+});
+
+// ── NormalMode: n / N search navigation ─────────────────────────────────────
+describe('NormalMode searchNext / searchPrev', () => {
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('n dispatches searchNext', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    const captured: Intent[] = [];
+    const orig = engine.dispatch.bind(engine);
+    engine.dispatch = (i: Intent) => { captured.push(i); orig(i); };
+    engine.handleKey(mkKey('n'));
+    expect(captured.some(i => i.type === 'searchNext')).toBe(true);
+  });
+
+  it('N dispatches searchPrev', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    const captured: Intent[] = [];
+    const orig = engine.dispatch.bind(engine);
+    engine.dispatch = (i: Intent) => { captured.push(i); orig(i); };
+    engine.handleKey(mkKey('N'));
+    expect(captured.some(i => i.type === 'searchPrev')).toBe(true);
+  });
+});
+
+// ── PackAssignMode Tab completes current token ───────────────────────────────
+describe('PackAssignMode Tab autocomplete', () => {
+  function mkKey(key: string) {
+    return { key, ctrl: false, shift: false, alt: false, meta: false, preventDefault: () => {} };
+  }
+
+  it('Tab completes a partial pack name token', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    const pack: Pack = { id: 'p1', name: 'memes', createdAt: 0 };
+    const sticker: Sticker = {
+      id: 's1', name: 'pepe', packIds: [], tags: [],
+      data: new Uint8Array([1]).buffer, mimeType: 'image/png',
+      createdAt: 0, lastUsedAt: 0,
+    };
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [pack] });
+    // Press 'm' to enter PACKASSIGN (requires focusId; loadAll sets it to s1).
+    engine.handleKey(mkKey('m'));
+    // onEnter prefills '' (sticker has no packs); type 'mem' via keypresses.
+    'mem'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    engine.handleKey(mkKey('Tab'));
+    expect(engine.getSnapshot().statusInput).toBe('memes');
+  });
+
+  it('Tab completes only the last comma-separated token', () => {
+    const ports = fullPorts();
+    const engine = new EngineImpl(ports);
+    const p1: Pack = { id: 'p1', name: 'work', createdAt: 0 };
+    const p2: Pack = { id: 'p2', name: 'family', createdAt: 0 };
+    const sticker: Sticker = {
+      id: 's1', name: 'doc', packIds: [], tags: [],
+      data: new Uint8Array([1]).buffer, mimeType: 'image/png',
+      createdAt: 0, lastUsedAt: 0,
+    };
+    engine.dispatch({ type: 'loadAll', stickers: [sticker], packs: [p1, p2] });
+    engine.handleKey(mkKey('m'));
+    // onEnter prefills '' (sticker has no packs); type 'work, fam' via keypresses.
+    'work, fam'.split('').forEach(ch => engine.handleKey(mkKey(ch)));
+    engine.handleKey(mkKey('Tab'));
+    expect(engine.getSnapshot().statusInput).toBe('work, family');
   });
 });

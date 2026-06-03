@@ -75,13 +75,14 @@ npm test          # run once
 npm run test:watch  # watch mode
 ```
 
-Tests live in `src/test/engine.test.ts`. They cover the engine/FSM layer only —
+Tests live in `src/test/rebuild.test.ts`. They cover the engine/FSM layer only —
 no UI, no DOM. The suite uses `src/test/fakes/` as in-memory port substitutes.
 
-**Adding tests:** write a new `it(...)` in `engine.test.ts` (or a new `describe`
-block in the same file for a new subject). Use `makeEngine(registry?)` to get a
-wired engine and `FakeKeyValueStore` for the KV port. Inject a custom registry
-(`makeRegistry(...)`) when you need to observe mode lifecycle calls.
+**Adding tests:** write a new `it(...)` in `rebuild.test.ts` (or a new `describe`
+block in the same file for a new subject). Use the `fullPorts()` helper from the
+test file to get a wired port set, then construct `new EngineImpl(ports)`. Inject
+a custom `IModeRegistry` via the second constructor argument when you need to
+observe mode lifecycle calls.
 
 **Node version note:** Vitest runs against its own bundled Vite 5 via
 `vitest.config.ts`; `vite.config.ts` is only used by the dev server. Do not
