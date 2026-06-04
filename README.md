@@ -1,4 +1,4 @@
-# bootcamp-sticker-repo
+# Stickr
 
 A keyboard-driven sticker manager that lives entirely in your browser. No server,
 no sync, no account. Your stickers stay in IndexedDB until you export them.
